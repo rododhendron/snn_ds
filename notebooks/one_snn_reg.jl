@@ -34,7 +34,7 @@ md"# parameters"
 # ╔═╡ 91cccba8-acec-4d35-9018-8dcbd2165a2e
 begin
 	const analysis_path::String = "analysis/"
-	const b::Int16 = 1
+	const b::Int16 = 5
 	const offset::Float64 = 2000
 
 	const tstart::Float64 = 0.0
@@ -52,11 +52,11 @@ begin
 		vrest=-65,
 		TauW=500,
 		w0=0,
-		a=4
+		a=6
 	))
 
 	# input params
-	input_value = 65
+	input_value = 5
 	n_spikes = 3
 end
 
@@ -78,8 +78,8 @@ function get_slice_xy(x, y; start=0, stop=0)
     (x[first_x_idx:last_x_idx], y[first_x_idx:last_x_idx])
 end
 
-function make_fig(x, y; xlabel="", ylabel="", title="")
-    f = Figure(size=(1600, 1200))
+function make_fig(;xlabel="", ylabel="", title="")
+    f = Figure(size=(1600, 700))
     ax = Axis(f[1, 1],
         title=title,
         xlabel=xlabel,
@@ -89,14 +89,21 @@ function make_fig(x, y; xlabel="", ylabel="", title="")
 end
 
 function plot_neuron_value(time, value, p, spikes; start=0, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false)
-    f, ax = make_fig(time, value; xlabel=xlabel, ylabel=ylabel, title=title)
+    f, ax = make_fig(;xlabel=xlabel, ylabel=ylabel, title=title)
     sliced_time, sliced_value = get_slice_xy(time, value, start=start, stop=stop)
 	spikes_in_window = [spike for spike in spikes if spike != 0 && spike < stop]
     is_voltage ? hlines!(ax, [p.vthr, p.vrest]; color=1:2) : nothing
-    vlines!(ax, [offset]; color=:grey)
-	vlines!(ax, spikes_in_window; color=:red)
+    vlines!(ax, [offset]; color=:grey, linestyle=:dashdot)
+	vlines!(ax, spikes_in_window; color=:red, linestyle=:dot)
     lines!(ax, sliced_time, sliced_value)
     tofile ? save(name, f) : f
+end
+
+function plot_spikes(spikes; start=0, stop=0, xlabel="", ylabel="", title="", name="")
+	f, ax = make_fig(;xlabel=xlabel, ylabel=ylabel, title=title)
+	spikes_in_window = [spike for spike in spikes if spike != 0 && start < spike < stop]
+    vlines!(ax, spikes_in_window; color=:grey)
+	f
 end
 
 function get_spikes_from_voltage(t, v, v_target)
@@ -131,6 +138,7 @@ function gen_spike_train(lambda, n_events, offset)
 end
 	
 	spikes = gen_spike_train(0.1, 10, offset)
+	reg_spikes = 2000:7:5000
 end
 
 # ╔═╡ c76cd92f-7ef0-4e19-a597-749139edf05e
@@ -152,7 +160,7 @@ md"# events definition"
 begin
 	spike_condition = [v ~ -50]
 	spike_affect = [v ~ -65, w ~ w + b * 1]
-	discretes_spike_inputs = [[2000.0] => [v ~ v + input_value]]
+	discretes_spike_inputs = [reg_spikes => [v ~ v + input_value]]
 end
 
 # ╔═╡ 5fa33741-97e9-474b-b5fd-bd03c22afc91
@@ -161,7 +169,7 @@ md"# variable rate jump definition"
 # ╔═╡ e1b2b94c-aded-4590-bee4-1730c8a94862
 begin
 spikes_t = []
-input_spike_rate(u, p, t) = t > 2000.0 ? 0.06 : 0
+input_spike_rate(u, p, t) = t < 2000 ? 0.0 : 0.03
 function integrate_spike!(integrator)
 	last_spike = length(spikes_t) > 0 ? last(spikes_t) : 0
 	if integrator.t - 5 > last_spike
@@ -178,7 +186,7 @@ md"# model construction"
 
 # ╔═╡ 2cf38f72-d740-4d38-af10-35eef9288cfb
 begin
-@named neuron = ODESystem(eqs, t; tspan=tspan, continuous_events=spike_condition => spike_affect)
+@named neuron = ODESystem(eqs, t; tspan=tspan, continuous_events=spike_condition => spike_affect, discrete_events=discretes_spike_inputs)
 
 simplified_model = structural_simplify(dae_index_lowering(neuron))
 end
@@ -189,8 +197,7 @@ md"# problem construction"
 # ╔═╡ 5440e185-08f0-4f69-a503-67d2fc34e02d
 begin
 prob = ODEProblem(simplified_model, [], tspan)
-jumprob = JumpProblem(prob, Direct(), crj)
-sol = solve(jumprob, Vern6(); dtmax=0.1)
+sol = solve(prob, Tsit5();abstol=1e-7, reltol=1e-7)
 end
 
 # ╔═╡ 4c05f0a7-dc6e-42f1-babe-341d23cc0727
@@ -201,8 +208,8 @@ md"cursor definition for plot"
 
 # ╔═╡ 04a06203-f446-46e2-86d6-3c593f0c67c4
 begin
-before_offset = offset - 50
-after_offset = offset + 500
+before_offset = offset - 200
+after_offset = offset + 1000
 end
 
 # ╔═╡ 8c4de4f6-20fa-4b27-b438-f69f841c135c
@@ -212,7 +219,7 @@ spikes_t
 md"# plots"
 
 # ╔═╡ ed0755af-52d5-487f-974d-4100e2573429
-plot_neuron_value(sol.t, sol[v], p, spikes_t;
+plot_neuron_value(sol.t, sol[v], p, reg_spikes;
     start=before_offset,
     stop=after_offset,
     title="Neuron voltage along time.",
@@ -224,7 +231,7 @@ plot_neuron_value(sol.t, sol[v], p, spikes_t;
 )
 
 # ╔═╡ 95bd7b02-3fa5-4a34-9f09-28f3b21b56c0
-plot_neuron_value(sol.t, sol[w], p, spikes_t;
+plot_neuron_value(sol.t, sol[w], p, reg_spikes;
     start=before_offset,
     stop=after_offset,
     title="Neuron adaptation along time.",
@@ -235,7 +242,10 @@ plot_neuron_value(sol.t, sol[w], p, spikes_t;
 )
 
 # ╔═╡ 3993b327-9c5a-41c7-bdd6-c51b07bbbec0
+sol.t[findall(row -> row[1] >= p.vthr, sol.u)]
 
+# ╔═╡ 2ae03bea-b1cf-47da-92ea-af7f0f4578bf
+p.vthr
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -3188,5 +3198,6 @@ version = "3.6.0+0"
 # ╠═ed0755af-52d5-487f-974d-4100e2573429
 # ╠═95bd7b02-3fa5-4a34-9f09-28f3b21b56c0
 # ╠═3993b327-9c5a-41c7-bdd6-c51b07bbbec0
+# ╠═2ae03bea-b1cf-47da-92ea-af7f0f4578bf
 # ╟─00000000-0000-0000-0000-000000000001
 # ╟─00000000-0000-0000-0000-000000000002
