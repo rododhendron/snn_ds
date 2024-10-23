@@ -42,21 +42,23 @@ begin
 	const tspan = (tstart, tstop)
 	
 	# model params
-	p = SLVector((
+	mparams = SLVector((
 		Je=10,
-		El=-65,
 		delta = 2,
 		vthr=-50,
-		Trefr=5,
 		Cm=200,
 		vrest=-65,
 		TauW=500,
 		w0=0,
-		a=4
+		a=6
+	))
+	uparams = SLVector((
+		v=mparams.vrest,
+		w=mparams.w0
 	))
 
 	# input params
-	input_value = 65
+	input_value = 5
 	n_spikes = 3
 end
 
@@ -78,8 +80,8 @@ function get_slice_xy(x, y; start=0, stop=0)
     (x[first_x_idx:last_x_idx], y[first_x_idx:last_x_idx])
 end
 
-function make_fig(x, y; xlabel="", ylabel="", title="")
-    f = Figure(size=(1600, 1200))
+function make_fig(;xlabel="", ylabel="", title="")
+    f = Figure(size=(1600, 700))
     ax = Axis(f[1, 1],
         title=title,
         xlabel=xlabel,
@@ -89,14 +91,23 @@ function make_fig(x, y; xlabel="", ylabel="", title="")
 end
 
 function plot_neuron_value(time, value, p, spikes; start=0, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false)
-    f, ax = make_fig(time, value; xlabel=xlabel, ylabel=ylabel, title=title)
+    f, ax = make_fig(;xlabel=xlabel, ylabel=ylabel, title=title)
     sliced_time, sliced_value = get_slice_xy(time, value, start=start, stop=stop)
 	spikes_in_window = [spike for spike in spikes if spike != 0 && spike < stop]
     is_voltage ? hlines!(ax, [p.vthr, p.vrest]; color=1:2) : nothing
-    vlines!(ax, [offset]; color=:grey)
-	vlines!(ax, spikes_in_window; color=:red)
+    vlines!(ax, [offset]; color=:grey, linestyle=:dashdot)
+	vlines!(ax, spikes_in_window; color=:red, linestyle=:dot)
     lines!(ax, sliced_time, sliced_value)
+	xlims!(ax, (start, stop))
     tofile ? save(name, f) : f
+end
+
+function plot_spikes(spikes; start=0, stop=0, xlabel="", ylabel="", title="", name="")
+	f, ax = make_fig(;xlabel=xlabel, ylabel=ylabel, title=title)
+	xlims!(ax, (start, stop))
+	spikes_in_window = [spike for spike in spikes if spike != 0 && start < spike < stop]
+    vlines!(ax, spikes_in_window; color=:grey)
+	f
 end
 
 function get_spikes_from_voltage(t, v, v_target)
@@ -136,30 +147,76 @@ end
 # ╔═╡ c76cd92f-7ef0-4e19-a597-749139edf05e
 md"# model equations"
 
+# ╔═╡ 22069b7a-8988-44f1-935a-e90f8f09ceb2
+LabelledArrays.symbols(mparams)
+
+# ╔═╡ 96b29db1-11bf-4a05-8388-7c3b5e478c8a
+
+
 # ╔═╡ 5de56251-6600-4a2b-9f83-65217ac5eca7
 begin
-	@variables v(t) = p.vrest w(t) = 0
+	# Create expression for @parameters macro
+    expr = Expr(:macrocall, Symbol("@parameters"))
+    push!(expr.args, nothing)  # Required for macro calls
+    
+    # Add each parameter with its default value
+    for name in LabelledArrays.symbols(mparams)
+        push!(expr.args, :($name))
+    end
+	try
+		Core.eval(@__MODULE__, expr)
+	catch e
+		println("already evaluated")
+	end
+	@variables v(t) = mparams.vrest w(t) = mparams.w0
 	eqs = [
-    	D(v) ~ (p.Je * (p.El - v) + p.delta * exp((v - p.vthr) / p.delta) - w) / p.Cm
-    	D(w) ~ (-w + p.a * (v - p.El)) / p.TauW
+    	D(v) ~ (Je * (vrest - v) + delta * exp((v - vthr) / delta) - w) / Cm
+    	D(w) ~ (-w + a * (v - vrest)) / TauW
 	]
 end
+
+# ╔═╡ dc9bd342-7fba-4a42-83c3-dd9dc9bafb4d
+
+
+# ╔═╡ b90a92a2-a5cc-4502-a749-cce0c27615fb
+
 
 # ╔═╡ 93fb8a6c-7012-4644-8308-86dd1d39a4db
 md"# events definition"
 
 # ╔═╡ fcd1036a-7808-474d-8606-fc7671c43b04
-begin
-	spike_condition = [v ~ -50]
-	spike_affect = [v ~ -65, w ~ w + b * 1]
-	discretes_spike_inputs = [[2000.0] => [v ~ v + input_value]]
-end
+
 
 # ╔═╡ 5fa33741-97e9-474b-b5fd-bd03c22afc91
 md"# variable rate jump definition"
 
+# ╔═╡ 19664e67-adba-4641-a606-f39a4b6e57c0
+md"# model construction"
+
+# ╔═╡ 2cf38f72-d740-4d38-af10-35eef9288cfb
+begin
+@named neuron = ODESystem(eqs, t; tspan=tspan)
+
+simplified_model = structural_simplify(dae_index_lowering(neuron))
+end
+
+# ╔═╡ 5a92cd39-37b6-40f5-a076-a86e1dd4d44a
+
+
+# ╔═╡ 2e93efb4-0357-4c31-89f3-4bc2dee6b96f
+md"# problem construction"
+
 # ╔═╡ e1b2b94c-aded-4590-bee4-1730c8a94862
 begin
+spike_condition(u, t, integrator) = u[1] > -50
+triggered_spikes = []
+function spike_affect!(integrator)
+	integrator.u[1] = -65
+	integrator.u[2] = integrator.u[2] + b * 1
+	push!(triggered_spikes, integrator.t)
+end
+spike_cb = ContinuousCallback(spike_condition, spike_affect!)
+discretes_spike_inputs = [[2000.0] => [v ~ v + input_value]]
 spikes_t = []
 input_spike_rate(u, p, t) = t > 2000.0 ? 0.06 : 0
 function integrate_spike!(integrator)
@@ -170,30 +227,17 @@ function integrate_spike!(integrator)
 		nothing
 	end
 end
-crj = VariableRateJump(input_spike_rate, integrate_spike!)
 end
-
-# ╔═╡ 19664e67-adba-4641-a606-f39a4b6e57c0
-md"# model construction"
-
-# ╔═╡ 2cf38f72-d740-4d38-af10-35eef9288cfb
-begin
-@named neuron = ODESystem(eqs, t; tspan=tspan, continuous_events=spike_condition => spike_affect)
-
-simplified_model = structural_simplify(dae_index_lowering(neuron))
-end
-
-# ╔═╡ 2e93efb4-0357-4c31-89f3-4bc2dee6b96f
-md"# problem construction"
 
 # ╔═╡ 5440e185-08f0-4f69-a503-67d2fc34e02d
 begin
-prob = ODEProblem(simplified_model, [], tspan)
+prob = ODEProblem(simplified_model, pairs(convert(NamedTuple, uparams)), tspan, pairs(convert(NamedTuple, mparams)))
+crj = VariableRateJump(input_spike_rate, integrate_spike!)
 jumprob = JumpProblem(prob, Direct(), crj)
-sol = solve(jumprob, Vern6(); dtmax=0.1)
+sol = solve(jumprob, Tsit5(); dtmax=0.1, abstol=1e-7, reltol=1e-7, callback=spike_cb)
 end
 
-# ╔═╡ 4c05f0a7-dc6e-42f1-babe-341d23cc0727
+# ╔═╡ 1cc7d9e8-309c-4d3e-a5b9-b3e9dd04e481
 
 
 # ╔═╡ d1ada308-23aa-4bb0-8e11-70f11f7f8260
@@ -201,7 +245,7 @@ md"cursor definition for plot"
 
 # ╔═╡ 04a06203-f446-46e2-86d6-3c593f0c67c4
 begin
-before_offset = offset - 50
+before_offset = offset - 100
 after_offset = offset + 500
 end
 
@@ -212,7 +256,7 @@ spikes_t
 md"# plots"
 
 # ╔═╡ ed0755af-52d5-487f-974d-4100e2573429
-plot_neuron_value(sol.t, sol[v], p, spikes_t;
+plot_neuron_value(sol.t, sol[v], mparams, spikes_t;
     start=before_offset,
     stop=after_offset,
     title="Neuron voltage along time.",
@@ -224,7 +268,7 @@ plot_neuron_value(sol.t, sol[v], p, spikes_t;
 )
 
 # ╔═╡ 95bd7b02-3fa5-4a34-9f09-28f3b21b56c0
-plot_neuron_value(sol.t, sol[w], p, spikes_t;
+plot_neuron_value(sol.t, sol[w], mparams, spikes_t;
     start=before_offset,
     stop=after_offset,
     title="Neuron adaptation along time.",
@@ -235,7 +279,13 @@ plot_neuron_value(sol.t, sol[w], p, spikes_t;
 )
 
 # ╔═╡ 3993b327-9c5a-41c7-bdd6-c51b07bbbec0
-
+plot_spikes(triggered_spikes;
+	start=before_offset,
+    stop=after_offset,
+    title="Spikes triggered along time.",
+    xlabel="time (in ms)",
+    ylabel="Spike"
+)
 
 # ╔═╡ 00000000-0000-0000-0000-000000000001
 PLUTO_PROJECT_TOML_CONTENTS = """
@@ -3171,16 +3221,21 @@ version = "3.6.0+0"
 # ╠═7c00ffc0-b055-4fe6-81eb-0943e6aae695
 # ╠═4674a6c2-d0b0-4ba4-be67-80792727d984
 # ╠═c76cd92f-7ef0-4e19-a597-749139edf05e
+# ╠═22069b7a-8988-44f1-935a-e90f8f09ceb2
+# ╠═96b29db1-11bf-4a05-8388-7c3b5e478c8a
 # ╠═5de56251-6600-4a2b-9f83-65217ac5eca7
+# ╠═dc9bd342-7fba-4a42-83c3-dd9dc9bafb4d
+# ╠═b90a92a2-a5cc-4502-a749-cce0c27615fb
 # ╠═93fb8a6c-7012-4644-8308-86dd1d39a4db
 # ╠═fcd1036a-7808-474d-8606-fc7671c43b04
 # ╠═5fa33741-97e9-474b-b5fd-bd03c22afc91
-# ╠═e1b2b94c-aded-4590-bee4-1730c8a94862
 # ╠═19664e67-adba-4641-a606-f39a4b6e57c0
 # ╠═2cf38f72-d740-4d38-af10-35eef9288cfb
+# ╠═5a92cd39-37b6-40f5-a076-a86e1dd4d44a
 # ╠═2e93efb4-0357-4c31-89f3-4bc2dee6b96f
+# ╠═e1b2b94c-aded-4590-bee4-1730c8a94862
 # ╠═5440e185-08f0-4f69-a503-67d2fc34e02d
-# ╠═4c05f0a7-dc6e-42f1-babe-341d23cc0727
+# ╠═1cc7d9e8-309c-4d3e-a5b9-b3e9dd04e481
 # ╠═d1ada308-23aa-4bb0-8e11-70f11f7f8260
 # ╠═04a06203-f446-46e2-86d6-3c593f0c67c4
 # ╠═8c4de4f6-20fa-4b27-b438-f69f841c135c

@@ -42,17 +42,19 @@ begin
 	const tspan = (tstart, tstop)
 	
 	# model params
-	p = SLVector((
+	params = SLVector((
 		Je=10,
-		El=-65,
 		delta = 2,
 		vthr=-50,
-		Trefr=5,
 		Cm=200,
 		vrest=-65,
 		TauW=500,
 		w0=0,
 		a=6
+	))
+	uparams = SLVector((
+		v=params.vrest,
+		w=params.w0
 	))
 
 	# input params
@@ -96,11 +98,13 @@ function plot_neuron_value(time, value, p, spikes; start=0, stop=0, xlabel="", y
     vlines!(ax, [offset]; color=:grey, linestyle=:dashdot)
 	vlines!(ax, spikes_in_window; color=:red, linestyle=:dot)
     lines!(ax, sliced_time, sliced_value)
+	xlims!(ax, (start, stop))
     tofile ? save(name, f) : f
 end
 
 function plot_spikes(spikes; start=0, stop=0, xlabel="", ylabel="", title="", name="")
 	f, ax = make_fig(;xlabel=xlabel, ylabel=ylabel, title=title)
+	xlims!(ax, (start, stop))
 	spikes_in_window = [spike for spike in spikes if spike != 0 && start < spike < stop]
     vlines!(ax, spikes_in_window; color=:grey)
 	f
@@ -144,12 +148,29 @@ end
 # ╔═╡ c76cd92f-7ef0-4e19-a597-749139edf05e
 md"# model equations"
 
+# ╔═╡ 0558d08b-96b4-4fa5-b3c0-07677fbef4b5
+params
+
 # ╔═╡ 5de56251-6600-4a2b-9f83-65217ac5eca7
 begin
-	@variables v(t) = p.vrest w(t) = 0
+	# Create expression for @parameters macro
+    expr = Expr(:macrocall, Symbol("@parameters"))
+    push!(expr.args, nothing)  # Required for macro calls
+    
+    # Add each parameter with its default value
+    for name in symbols(params)
+        push!(expr.args, :($name))
+    end
+	try
+		Core.eval(@__MODULE__, expr)
+	catch e
+		println("already evaluated")
+	end
+	# @parameters(p = symbols(params...))
+	@variables v(t) = params.vrest w(t) = params.w0
 	eqs = [
-    	D(v) ~ (p.Je * (p.El - v) + p.delta * exp((v - p.vthr) / p.delta) - w) / p.Cm
-    	D(w) ~ (-w + p.a * (v - p.El)) / p.TauW
+    	D(v) ~ (Je * (vrest - v) + delta * exp((v - vthr) / delta) - w) / Cm
+    	D(w) ~ (-w + a * (v - vrest)) / TauW
 	]
 end
 
@@ -158,10 +179,20 @@ md"# events definition"
 
 # ╔═╡ fcd1036a-7808-474d-8606-fc7671c43b04
 begin
-	spike_condition = [v ~ -50]
-	spike_affect = [v ~ -65, w ~ w + b * 1]
+	spike_condition(u, t, integrator) = u[1] > -50
+	triggered_spikes = []
+	function spike_affect!(integrator)
+		integrator.u[1] = -65
+		integrator.u[2] = integrator.u[2] + b * 1
+		push!(triggered_spikes, integrator.t)
+	end
+	spike_cb = ContinuousCallback(spike_condition, spike_affect!)
+	# spike_affect = [v ~ -65, w ~ w + b * 1]
 	discretes_spike_inputs = [reg_spikes => [v ~ v + input_value]]
 end
+
+# ╔═╡ 31846a48-da1b-4a20-aa2e-55173dcf6f2b
+
 
 # ╔═╡ 5fa33741-97e9-474b-b5fd-bd03c22afc91
 md"# variable rate jump definition"
@@ -186,22 +217,31 @@ md"# model construction"
 
 # ╔═╡ 2cf38f72-d740-4d38-af10-35eef9288cfb
 begin
-@named neuron = ODESystem(eqs, t; tspan=tspan, continuous_events=spike_condition => spike_affect, discrete_events=discretes_spike_inputs)
+@named neuron = ODESystem(eqs, t; tspan=tspan, discrete_events=discretes_spike_inputs)
 
 simplified_model = structural_simplify(dae_index_lowering(neuron))
 end
+
+# ╔═╡ f49fa6f5-8754-470b-9d36-5abdf89ac18a
+simplified_model.unknowns
+
+# ╔═╡ 97b663f7-1b6c-41a5-9ca8-4a993e14d0ac
+params
+
+# ╔═╡ 1d7f71a1-b248-47f9-ab8f-1e87ec101be3
+pairs(convert(NamedTuple, params))
 
 # ╔═╡ 2e93efb4-0357-4c31-89f3-4bc2dee6b96f
 md"# problem construction"
 
 # ╔═╡ 5440e185-08f0-4f69-a503-67d2fc34e02d
 begin
-prob = ODEProblem(simplified_model, [], tspan)
-sol = solve(prob, Tsit5();abstol=1e-7, reltol=1e-7)
+prob = ODEProblem(simplified_model, pairs(convert(NamedTuple, uparams)), tspan, pairs(convert(NamedTuple, params)))
+sol = solve(prob, Tsit5();abstol=1e-7, reltol=1e-7, callback=spike_cb)
 end
 
 # ╔═╡ 4c05f0a7-dc6e-42f1-babe-341d23cc0727
-
+pairs(convert(NamedTuple, uparams))
 
 # ╔═╡ d1ada308-23aa-4bb0-8e11-70f11f7f8260
 md"cursor definition for plot"
@@ -215,15 +255,18 @@ end
 # ╔═╡ 8c4de4f6-20fa-4b27-b438-f69f841c135c
 spikes_t
 
+# ╔═╡ 559554d0-7e20-4310-b2db-17f29021324c
+triggered_spikes
+
 # ╔═╡ 461ea35f-05bc-45ab-894d-8959a748ab0d
 md"# plots"
 
 # ╔═╡ ed0755af-52d5-487f-974d-4100e2573429
-plot_neuron_value(sol.t, sol[v], p, reg_spikes;
+plot_neuron_value(sol.t, sol[v], params, reg_spikes;
     start=before_offset,
     stop=after_offset,
     title="Neuron voltage along time.",
-    xlabel="time (in ms), starting 200ms before input",
+    xlabel="time (in ms)",
     ylabel="voltage (in mV)",
     name=analysis_path * "neuron_vt.png",
 	is_voltage=true,
@@ -231,18 +274,24 @@ plot_neuron_value(sol.t, sol[v], p, reg_spikes;
 )
 
 # ╔═╡ 95bd7b02-3fa5-4a34-9f09-28f3b21b56c0
-plot_neuron_value(sol.t, sol[w], p, reg_spikes;
+plot_neuron_value(sol.t, sol[w], params, reg_spikes;
     start=before_offset,
     stop=after_offset,
     title="Neuron adaptation along time.",
-    xlabel="time (in ms), starting 200ms before input",
+    xlabel="time (in ms)",
     ylabel="adaptation",
     name=analysis_path * "neuron_wt.png",
 	tofile=false
 )
 
 # ╔═╡ 3993b327-9c5a-41c7-bdd6-c51b07bbbec0
-sol.t[findall(row -> row[1] >= p.vthr, sol.u)]
+plot_spikes(triggered_spikes;
+	start=before_offset,
+    stop=after_offset,
+    title="Spikes triggered along time.",
+    xlabel="time (in ms)",
+    ylabel="Spike"
+)
 
 # ╔═╡ 2ae03bea-b1cf-47da-92ea-af7f0f4578bf
 p.vthr
@@ -3181,19 +3230,25 @@ version = "3.6.0+0"
 # ╠═7c00ffc0-b055-4fe6-81eb-0943e6aae695
 # ╠═4674a6c2-d0b0-4ba4-be67-80792727d984
 # ╠═c76cd92f-7ef0-4e19-a597-749139edf05e
+# ╠═0558d08b-96b4-4fa5-b3c0-07677fbef4b5
 # ╠═5de56251-6600-4a2b-9f83-65217ac5eca7
 # ╠═93fb8a6c-7012-4644-8308-86dd1d39a4db
 # ╠═fcd1036a-7808-474d-8606-fc7671c43b04
+# ╠═31846a48-da1b-4a20-aa2e-55173dcf6f2b
 # ╠═5fa33741-97e9-474b-b5fd-bd03c22afc91
 # ╠═e1b2b94c-aded-4590-bee4-1730c8a94862
 # ╠═19664e67-adba-4641-a606-f39a4b6e57c0
 # ╠═2cf38f72-d740-4d38-af10-35eef9288cfb
+# ╠═f49fa6f5-8754-470b-9d36-5abdf89ac18a
+# ╠═97b663f7-1b6c-41a5-9ca8-4a993e14d0ac
+# ╠═1d7f71a1-b248-47f9-ab8f-1e87ec101be3
 # ╠═2e93efb4-0357-4c31-89f3-4bc2dee6b96f
 # ╠═5440e185-08f0-4f69-a503-67d2fc34e02d
 # ╠═4c05f0a7-dc6e-42f1-babe-341d23cc0727
 # ╠═d1ada308-23aa-4bb0-8e11-70f11f7f8260
 # ╠═04a06203-f446-46e2-86d6-3c593f0c67c4
 # ╠═8c4de4f6-20fa-4b27-b438-f69f841c135c
+# ╠═559554d0-7e20-4310-b2db-17f29021324c
 # ╠═461ea35f-05bc-45ab-894d-8959a748ab0d
 # ╠═ed0755af-52d5-487f-974d-4100e2573429
 # ╠═95bd7b02-3fa5-4a34-9f09-28f3b21b56c0
