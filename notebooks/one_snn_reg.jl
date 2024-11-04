@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.20.1
+# v0.20.0
 
 using Markdown
 using InteractiveUtils
@@ -34,7 +34,7 @@ md"# parameters"
 # ╔═╡ 91cccba8-acec-4d35-9018-8dcbd2165a2e
 begin
 	const analysis_path::String = "analysis/"
-	const b::Int16 = 5
+	const b::Float64 = 0.04
 	const offset::Float64 = 2000
 
 	const tstart::Float64 = 0.0
@@ -44,7 +44,7 @@ begin
 	# model params
 	params = SLVector((
 		Je=10,
-		delta = 2,
+		delta = 2.5,
 		vthr=-50,
 		Cm=200,
 		vrest=-65,
@@ -122,27 +122,7 @@ md"# input fn"
 
 # ╔═╡ 4674a6c2-d0b0-4ba4-be67-80792727d984
 begin
-	
-function input_fn(t)
-    if t < offset
-        return 0
-    else
-        return input_value * n_spikes
-    end
-end
-@register_symbolic input_fn(t)
-
-function gen_spike_train(lambda, n_events, offset)
-    input_spike_times = [offset]
-    for event in 1:n_events
-        interval = rand(Exponential(1 / lambda))
-        push!(input_spike_times, interval + last(input_spike_times))
-    end
-    input_spike_times
-end
-	
-	spikes = gen_spike_train(0.1, 10, offset)
-	reg_spikes = 2000:7:5000
+	reg_spikes = 2000:15:5000
 end
 
 # ╔═╡ c76cd92f-7ef0-4e19-a597-749139edf05e
