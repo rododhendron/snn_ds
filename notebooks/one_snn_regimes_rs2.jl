@@ -34,7 +34,7 @@ md"# parameters"
 # ╔═╡ 91cccba8-acec-4d35-9018-8dcbd2165a2e
 begin
 	const analysis_path::String = "analysis/"
-	const b::Float64 = 0.04
+	const b::Float64 = 0.005
 	const offset::Float64 = 200
 
 	const tstart::Float64 = 0.0
@@ -130,7 +130,7 @@ md"# input fn"
 # ╔═╡ 4674a6c2-d0b0-4ba4-be67-80792727d984
 begin
 	start_input = offset
-	input_duration = 1000
+	input_duration = 1500
 	input_value = 1.4e-2
 	step_fn(t) = start_input < t < start_input + input_duration ? input_value : 0
 	@register_symbolic step_fn(t)

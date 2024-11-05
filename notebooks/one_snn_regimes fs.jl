@@ -34,7 +34,7 @@ md"# parameters"
 # ╔═╡ 91cccba8-acec-4d35-9018-8dcbd2165a2e
 begin
 	const analysis_path::String = "analysis/"
-	const b::Float64 = 0.04
+	const b::Float64 = 0
 	const offset::Float64 = 200
 
 	const tstart::Float64 = 0.0

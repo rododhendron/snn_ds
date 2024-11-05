@@ -34,7 +34,7 @@ md"# parameters"
 # ╔═╡ 91cccba8-acec-4d35-9018-8dcbd2165a2e
 begin
 	const analysis_path::String = "analysis/"
-	const b::Float64 = 0.04
+	const b::Float64 = 0.08
 	const offset::Float64 = 200
 
 	const tstart::Float64 = 0.0
@@ -47,10 +47,10 @@ begin
 		delta = 2.5,
 		vthr=-50,
 		Cm=1,
-		vrest=-65,
+		vrest=-60,
 		TauW=600,
 		w0=0,
-		a=0.001,
+		a=0.03,
 		input_potential=0
 	))
 	uparams = SLVector((
@@ -131,7 +131,7 @@ md"# input fn"
 begin
 	start_input = offset
 	input_duration = 1000
-	input_value = 1.4e-2
+	input_value = 1.2e-2
 	step_fn(t) = start_input < t < start_input + input_duration ? input_value : 0
 	@register_symbolic step_fn(t)
 end
@@ -180,12 +180,12 @@ begin
 	spike_condition(u, t, integrator) = u[1] > -50
 	triggered_spikes = []
 	function spike_affect!(integrator)
-		integrator.u[1] = -65
+		integrator.u[1] = -60
 		integrator.u[2] = integrator.u[2] + b * 1
 		push!(triggered_spikes, integrator.t)
 	end
 	spike_cb = ContinuousCallback(spike_condition, spike_affect!)
-	spike_affect_event = [v ~ -65, w ~ w + b * 1]
+	spike_affect_event = [v ~ -60, w ~ w + b * 1]
 end
 
 # ╔═╡ 19664e67-adba-4641-a606-f39a4b6e57c0
@@ -193,7 +193,7 @@ md"# model construction"
 
 # ╔═╡ 2cf38f72-d740-4d38-af10-35eef9288cfb
 begin
-@named neuron = ODESystem(eqs, t; tspan=tspan, continuous_events=[v ~ params.vthr + 5] => spike_affect_event)
+@named neuron = ODESystem(eqs, t; tspan=tspan, continuous_events=[v ~ params.vthr] => spike_affect_event)
 
 simplified_model = structural_simplify(neuron)
 end
