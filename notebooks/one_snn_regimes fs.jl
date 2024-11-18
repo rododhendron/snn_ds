@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.20.1
+# v0.20.0
 
 using Markdown
 using InteractiveUtils
@@ -47,7 +47,7 @@ begin
 		delta = 2.5,
 		vthr=-50,
 		Cm=1,
-		vrest=-65,
+		vrest=-60,
 		TauW=600,
 		w0=0,
 		a=0.001,
@@ -131,7 +131,7 @@ md"# input fn"
 begin
 	start_input = offset
 	input_duration = 1000
-	input_value = 1.4e-2
+	input_value = 0.25
 	step_fn(t) = start_input < t < start_input + input_duration ? input_value : 0
 	@register_symbolic step_fn(t)
 end
@@ -166,7 +166,7 @@ begin
 	# @parameters(p = symbols(params...))
 	@variables v(t) = params.vrest w(t) = params.w0 I(t) [input = true]
 	eqs = [
-    	D(v) ~ (- Je * (v - vrest) + Je * delta * exp((v - vthr) / delta) - w - I * (v - input_potential))/ Cm
+    	D(v) ~ (- Je * (v - vrest) + Je * delta * exp((v - vthr) / delta) - w / 20000 - I * (v - input_potential))/ Cm
     	D(w) ~ (-w + a * (v - vrest)) / TauW
 		I ~ step_fn(t)
 	]
@@ -193,7 +193,7 @@ md"# model construction"
 
 # ╔═╡ 2cf38f72-d740-4d38-af10-35eef9288cfb
 begin
-@named neuron = ODESystem(eqs, t; tspan=tspan, continuous_events=[v ~ params.vthr + 5] => spike_affect_event)
+@named neuron = ODESystem(eqs, t; tspan=tspan, continuous_events=[v ~ params.vthr + 50] => spike_affect_event)
 
 simplified_model = structural_simplify(neuron)
 end

@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.20.1
+# v0.20.0
 
 using Markdown
 using InteractiveUtils
@@ -145,9 +145,6 @@ md"# model equations"
 # ╔═╡ 0558d08b-96b4-4fa5-b3c0-07677fbef4b5
 params
 
-# ╔═╡ d0658c20-b9c4-4928-9b70-32073474e7ed
-@parameters input_potential
-
 # ╔═╡ 5de56251-6600-4a2b-9f83-65217ac5eca7
 begin
 	# Create expression for @parameters macro
@@ -171,6 +168,9 @@ begin
 		I ~ step_fn(t)
 	]
 end
+
+# ╔═╡ d0658c20-b9c4-4928-9b70-32073474e7ed
+@parameters input_potential
 
 # ╔═╡ 93fb8a6c-7012-4644-8308-86dd1d39a4db
 md"# events definition"

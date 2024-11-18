@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.20.1
+# v0.20.0
 
 using Markdown
 using InteractiveUtils
@@ -193,7 +193,7 @@ md"# model construction"
 
 # ╔═╡ 2cf38f72-d740-4d38-af10-35eef9288cfb
 begin
-@named neuron = ODESystem(eqs, t; tspan=tspan, continuous_events=[v ~ params.vthr] => spike_affect_event)
+@named neuron = ODESystem(eqs, t; tspan=tspan, continuous_events=[v ~ params.vthr + 50] => spike_affect_event)
 
 simplified_model = structural_simplify(neuron)
 end
