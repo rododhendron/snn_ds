@@ -34,7 +34,7 @@ md"# parameters"
 # ╔═╡ 91cccba8-acec-4d35-9018-8dcbd2165a2e
 begin
 	const analysis_path::String = "analysis/"
-	const b::Float64 = 0
+	const b::Float64 = 0.04
 	const offset::Float64 = 200
 
 	const tstart::Float64 = 0.0
@@ -43,7 +43,7 @@ begin
 
 	# model params
 	params = SLVector((
-		Je=5e-3,
+		Je=5e-5,
 		delta = 2.5,
 		vthr=-50,
 		Cm=1,
@@ -53,15 +53,20 @@ begin
 		a=0.001,
 		input_potential=0,
 		EAMPA=-0.0,
-		gAMPAmax=0.006,
-		tau_AMPA=5.0
+		gAMPAmax=6.0e-3,
+		tau_AMPA=5.0,
+		EGABA=-75.0,
+		gGABAmax=0.067,
+		tau_GABAa_rise=1,
+		tau_GABAa_fast=6
 	))
 	uparams = SLVector((
 		vpre=params.vrest,
 		wpre=params.w0,
 		vpost=params.vrest,
 		wpost=params.w0,
-		gAMPA=params.gAMPAmax,
+		# gAMPA=0,
+		gGABAa=0
 	))
 
 	# input params
@@ -139,8 +144,8 @@ md"# input fn"
 # ╔═╡ 4674a6c2-d0b0-4ba4-be67-80792727d984
 begin
 	start_input = offset
-	input_duration = 50
-	input_value = 0
+	input_duration = 500
+	input_value = 0.25e-1
 	step_fn(t) = start_input < t < start_input + input_duration ? input_value : 0
 	@register_symbolic step_fn(t)
 end
@@ -157,8 +162,14 @@ params
 # ╔═╡ 5ac39ee3-e1e8-498a-b33a-bb0fc1e62452
 (uparams.gAMPA - 40) / 5
 
+# ╔═╡ 6bfd2bf0-5e48-4b54-b66d-9b586900be3a
+uparams.gAMPA
+
+# ╔═╡ 995f01f2-1e4c-48c1-a1d1-433d9ab9fb8d
+params.gAMPAmax
+
 # ╔═╡ d0658c20-b9c4-4928-9b70-32073474e7ed
-@parameters input_potential
+@parameters gGABAmax tau_GABAa_rise tau_GABAa_fast input_potential EGABA
 
 # ╔═╡ 5de56251-6600-4a2b-9f83-65217ac5eca7
 begin
@@ -177,15 +188,20 @@ begin
 	end
 	# @parameters(p = symbols(params...))
 	@variables vpre(t) = params.vrest wpre(t) = params.w0 Ipre(t) [input = true]
-	@variables gAMPA(t) = 0 vpost(t) = params.vrest wpost(t) = params.w0 Ipost(t)
+	# @variables gAMPA(t) = 0
+	@variables gGABAa(t) = 0
+	@variables vpost(t) = params.vrest wpost(t) = params.w0 Ipost(t) 
 	eqs = [
-    	D(vpre) ~ (- Je * (vpre - vrest) + Je * delta * exp((vpre - vthr) / delta) - wpre / 20000 - Ipre * (vpre - input_potential))/ Cm
+    	D(vpre) ~ (- Je * (vpre - vrest) + Je * delta * exp((vpre - vthr) / delta) - wpre / 2 - Ipre * (vpre - input_potential))/ Cm
     	D(wpre) ~ (-wpre + a * (vpre - vrest)) / TauW
 		Ipre ~ step_fn(t)
-    	D(vpost) ~ (- Je * (vpost - vrest) + Je * delta * exp((vpost - vthr) / delta) - wpost / 20000 - Ipost )/ Cm
+    	D(vpost) ~ (- Je * (vpost - vrest) + Je * delta * exp((vpost - vthr) / delta) - wpost / 2 - Ipost ) / Cm #- Ipre * (vpre - input_potential) )/ Cm
     	D(wpost) ~ (-wpost + a * (vpost - vrest)) / TauW
-		D(gAMPA) ~ -exp((gAMPA - gAMPAmax) / tau_AMPA)
-		Ipost ~ gAMPA * (vpost - EAMPA)
+		# D(gAMPA) ~ (-gAMPAmax + (gAMPAmax - gAMPA)) / tau_AMPA
+		# Ipost ~ gAMPA * (vpost - EAMPA)
+		# D(gGABAa) ~ (-gGABAmax + (gGABAmax - gGABAa)) / tau_GABAa_rise + (-gGABAmax + )
+		D(gGABAa) ~ -exp(-gGABAa / tau_GABAa_rise)
+		Ipost ~ gGABAa * (vpost - EGABA)
 	]
 	"ok"
 end
@@ -206,7 +222,8 @@ begin
 		push!(triggered_spikes, integrator.t)
 	end
 	spike_cb = ContinuousCallback(spike_condition, spike_affect!)
-	spike_affect_event_pre = [vpre ~ -60, wpre ~ wpre + b * 1, gAMPA ~ gAMPA + 1]
+	# spike_affect_event_pre = [vpre ~ -60, wpre ~ wpre + b * 1, gAMPA ~ gAMPA + 1]
+	spike_affect_event_pre = [vpre ~ -60, wpre ~ wpre + b * 1, gGABAa ~ gGABAa + 1]
 	spike_affect_event_post = [vpost ~ -60, wpost ~ wpost + b * 1]
 end
 
@@ -238,7 +255,7 @@ md"# problem construction"
 # ╔═╡ 5440e185-08f0-4f69-a503-67d2fc34e02d
 begin
 prob = ODEProblem(simplified_model, pairs(convert(NamedTuple, uparams)), tspan, pairs(convert(NamedTuple, params)))
-sol = solve(prob, Vern6(); abstol=1e-5, reltol=1e-5)
+sol = solve(prob, Vern6(); abstol=1e-9, reltol=1e-9)
 end
 
 # ╔═╡ bb697c44-2d93-4452-9ae2-af66674f73ca
@@ -256,7 +273,7 @@ md"cursor definition for plot"
 # ╔═╡ 04a06203-f446-46e2-86d6-3c593f0c67c4
 begin
 before_offset = offset - 200
-after_offset = offset + 2000
+after_offset = offset + 1000
 end
 
 # ╔═╡ 8c4de4f6-20fa-4b27-b438-f69f841c135c
@@ -306,6 +323,18 @@ plot_neuron_value(sol.t, sol[vpost], params ,sol[Ipost];
 	tofile=false
 )
 
+# ╔═╡ 1e22fef0-5f18-42fe-abc9-a9d7b67efe3a
+plot_neuron_value(sol.t, sol[gAMPA], params ,sol[Ipost];
+    start=before_offset,
+    stop=after_offset,
+    title="Neuron voltage along time.",
+    xlabel="time (in ms)",
+    ylabel="voltage (in mV)",
+    name=analysis_path * "neuron_vt.png",
+	is_voltage=false,
+	tofile=false
+)
+
 # ╔═╡ 3993b327-9c5a-41c7-bdd6-c51b07bbbec0
 plot_neuron_value(sol.t, sol[wpost], params ,sol[Ipost];
     start=before_offset,
@@ -314,7 +343,7 @@ plot_neuron_value(sol.t, sol[wpost], params ,sol[Ipost];
     xlabel="time (in ms)",
     ylabel="voltage (in mV)",
     name=analysis_path * "neuron_vt.png",
-	is_voltage=true,
+	is_voltage=false,
 	tofile=false
 )
 
@@ -3350,6 +3379,8 @@ version = "3.6.0+0"
 # ╠═0558d08b-96b4-4fa5-b3c0-07677fbef4b5
 # ╠═5de56251-6600-4a2b-9f83-65217ac5eca7
 # ╠═5ac39ee3-e1e8-498a-b33a-bb0fc1e62452
+# ╠═6bfd2bf0-5e48-4b54-b66d-9b586900be3a
+# ╠═995f01f2-1e4c-48c1-a1d1-433d9ab9fb8d
 # ╠═d586f098-fb69-4200-ac6b-e12975cd3987
 # ╠═d0658c20-b9c4-4928-9b70-32073474e7ed
 # ╠═93fb8a6c-7012-4644-8308-86dd1d39a4db
@@ -3374,6 +3405,7 @@ version = "3.6.0+0"
 # ╠═95bd7b02-3fa5-4a34-9f09-28f3b21b56c0
 # ╠═4b7a14f0-e129-47ca-96de-dfdc2d062ec5
 # ╠═852556a3-f726-4e0d-be17-2e40f5e65b3e
+# ╠═1e22fef0-5f18-42fe-abc9-a9d7b67efe3a
 # ╠═3993b327-9c5a-41c7-bdd6-c51b07bbbec0
 # ╠═2ae03bea-b1cf-47da-92ea-af7f0f4578bf
 # ╟─00000000-0000-0000-0000-000000000001

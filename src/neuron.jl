@@ -1,19 +1,55 @@
 using ModelingToolkit
 
-function get_soma(mparams, uparams)
-    @modeling
-    expr = instantiate_params_as_symbols(mparams)
-   	try
-		Core.eval(@__MODULE__, expr)
-	catch e
-		println("already evaluated")
-	end
-   	@variables v(t) = mparams.vrest w(t) = mparams.w0
-	eqs = [
-       	D(v) ~ (Je * (vrest - v) + delta * exp((v - vthr) / delta) - w) + I / Cm
-       	D(w) ~ (-w + a * (v - vrest)) / TauW
-	]
+@mtkmodel Soma begin
+    @variables begin
+        v(t)
+        w(t)
+    end
+    @parameters begin
+        Je
+        vrest
+        delta
+        vthr
+        Cm
+        a
+        TauW
+    end
+    @equations begin
+        D(v) ~ (Je * (vrest - v) + delta * exp((v - vthr) / delta) - w) + I / Cm
+        D(w) ~ (-w + a * (v - vrest)) / TauW
+    end
 end
+
+@mtkmodel SynapseAMPA begin
+    @parameters begin
+        gmax
+        tau
+    end
+    @variables begin
+        g(t)
+    end
+    # have to bind I on connect
+    @equations begin
+        D(g) ~ (-gmax + (gmax - g)) / tau
+    end
+end
+
+function get_soma(mparams, uparams)
+    @mtkmodel anoth begin
+        expr = instantiate_params_as_symbols(mparams)
+        try
+            Core.eval(@__MODULE__, expr)
+        catch e
+            println("already evaluated")
+        end
+        @variables v(t) = mparams.vrest w(t) = mparams.w0
+        eqs = [
+            D(v) ~ (Je * (vrest - v) + delta * exp((v - vthr) / delta) - w) + I / Cm
+            D(w) ~ (-w + a * (v - vrest)) / TauW
+        ]
+    end
+end
+
 # Base neuron parameters
 Base.@kwdef mutable struct AdExNeuronParams <: AbstractNeuronParams
     vrest::Float64 = -65.0  # Resting membrane potential (mV)
@@ -50,12 +86,6 @@ function get_synapse(synapse_type::NeuronType{AMPA}, params)
 end
 
 function make_neuron(params, soma_fn, synapse_fn)
-    @mtkmodel Neuron begin
-        @parameters begin
-        end
-    end
     soma = soma_fn(params)
     neuron_ode = ODESystem(soma, t, tspan)
 end
-
-@component
