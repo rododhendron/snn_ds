@@ -33,6 +33,7 @@
             gcc11
             just
             julia
+            uncrustify
           ];
           shellHook = ''
             export LD_LIBRARY_PATH=${pkgs.zlib}/lib:${pkgs.stdenv.cc.cc.lib}/lib

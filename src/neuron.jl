@@ -1,9 +1,14 @@
+module Neuron
 using ModelingToolkit
+using ModelingToolkit: t_nounits as t, D_nounits as D
 
-@mtkmodel Soma begin
+@mtkmodel Soma begin # AdEx neuron from https://journals.physiology.org/doi/pdf/10.1152/jn.00686.2005
     @variables begin
         v(t)
         w(t)
+        I(t), [input=true]
+        Ib(t), [input=true]
+        R(t), [output=true]
     end
     @parameters begin
         Je
@@ -15,12 +20,15 @@ using ModelingToolkit
         TauW
     end
     @equations begin
-        D(v) ~ (Je * (vrest - v) + delta * exp((v - vthr) / delta) - w) + I / Cm
-        D(w) ~ (-w + a * (v - vrest)) / TauW
+        D(v) ~ (Je * (vrest - v) + delta * exp((v - vthr) / delta) - w) + I + Ib / Cm # voltage dynamic
+        D(w) ~ (-w + a * (v - vrest)) / TauW # adaptation dynamic
+        I ~ 0
+        Ib ~ 0
+        R ~ 0
     end
 end
 
-@mtkmodel SynapseAMPA begin
+@mtkmodel SynapseAMPA begin # AMPA synapse https://neuronaldynamics.epfl.ch/online/Ch3.S1.html#Ch3.E2
     @parameters begin
         gmax
         tau
@@ -34,32 +42,18 @@ end
     end
 end
 
-function get_soma(mparams, uparams)
-    @mtkmodel anoth begin
-        expr = instantiate_params_as_symbols(mparams)
-        try
-            Core.eval(@__MODULE__, expr)
-        catch e
-            println("already evaluated")
-        end
-        @variables v(t) = mparams.vrest w(t) = mparams.w0
-        eqs = [
-            D(v) ~ (Je * (vrest - v) + delta * exp((v - vthr) / delta) - w) + I / Cm
-            D(w) ~ (-w + a * (v - vrest)) / TauW
-        ]
-    end
-end
 
 # Base neuron parameters
-Base.@kwdef mutable struct AdExNeuronParams <: AbstractNeuronParams
-    vrest::Float64 = -65.0  # Resting membrane potential (mV)
-    vthr::Float64 = -50.0   # Spike threshold (mV)
-    w0::Float64 = 0.0       # Initial adaptation current
-    Je::Float64 = 1.0       # Membrane time constant
-    delta::Float64 = 2.0    # Spike slope factor
-    Cm::Float64 = 1.0       # Membrane capacitance
-    TauW::Float64 = 20.0    # Adaptation time constant
-    a::Float64 = 0.0        # Subthreshold adaptation
+Base.@kwdef mutable struct AdExNeuronParams
+    vrest::Float64 = -65.0e-3  # Resting membrane potential (V)
+    vthr::Float64 = -50.0e-3   # Spike threshold (V)
+    w0::Float64 = 0.0e-9       # Initial adaptation current
+    Je::Float64 = 1.0e-9       # Membrane time constant (Siemens S)
+    delta::Float64 = 2.0e-3    # Spike slope factor (V)
+    Cm::Float64 = 1.0       # Membrane capacitance (Farad F)
+    TauW::Float64 = 20.0    # Adaptation time constant (s)
+    a::Float64 = 0.0        # Subthreshold adaptation (A)
+    gl::Float64 = 20e-9     # leak conductance
 end
 
 struct Params{S}
@@ -71,21 +65,29 @@ struct Params{S}
     TauW::Float64
 end
 
-@enum NeuronType begin
-    SIMPLE_E
-    AMPA
+abstract type SynapseType end
+struct SIMPLE_E <: SynapseType end
+struct AMPA <: SynapseType end
+struct GABAa <: SynapseType end
+
+function get_synapse(_synapse_type::SIMPLE_E, params) # _ before variable is a convention for a unused variable in function body ; just used for type dispatch
+    [I ~ params.gl * params.a]
 end
 
-function get_synapse(synapse_type::NeuronType{SIMPLE_E}, params)
-    I = params.gl * params.a
-end
-
-function get_synapse(synapse_type::NeuronType{AMPA}, params)
+function get_synapse(_synapse_type::AMPA, params)
     @variables I
     D(v) = params.gl * params.a * ()
 end
 
-function make_neuron(params, soma_fn, synapse_fn)
-    soma = soma_fn(params)
-    neuron_ode = ODESystem(soma, t, tspan)
+function make_neuron(params, soma_model, synapse_fn, tspan)
+    @mtkbuild soma = soma_model()
+end
+
+function connect_neurons(pre_neuron, post_neuron, synapse_type)
+    synapse_eq_g = get_synapse(synapse_type) # get conductance equation from synapse type
+    connected = compose([
+        pre_neuron
+    ])
+end
+
 end
