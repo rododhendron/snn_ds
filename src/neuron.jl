@@ -6,9 +6,10 @@ using ModelingToolkit: t_nounits as t, D_nounits as D
     @variables begin
         v(t)
         w(t)
-        I(t), [input=true]
-        Ib(t), [input=true]
-        R(t), [output=true]
+        Ie(t), [input = true]
+        Ii(t), [input = true]
+        Ib(t), [input = true]
+        R(t), [output = true]
     end
     @parameters begin
         Je
@@ -22,7 +23,8 @@ using ModelingToolkit: t_nounits as t, D_nounits as D
     @equations begin
         D(v) ~ (Je * (vrest - v) + delta * exp((v - vthr) / delta) - w) + I + Ib / Cm # voltage dynamic
         D(w) ~ (-w + a * (v - vrest)) / TauW # adaptation dynamic
-        I ~ 0
+        Ie ~ 0
+        Ii ~ 0
         Ib ~ 0
         R ~ 0
     end
@@ -71,19 +73,26 @@ struct AMPA <: SynapseType end
 struct GABAa <: SynapseType end
 
 function get_synapse(_synapse_type::SIMPLE_E, params) # _ before variable is a convention for a unused variable in function body ; just used for type dispatch
-    [I ~ params.gl * params.a]
+    @variables g_syn
+    [g_syn ~ params.gl * params.a]
 end
 
 function get_synapse(_synapse_type::AMPA, params)
-    @variables I
-    D(v) = params.gl * params.a * ()
+    @variables g_syn
+    D(g_syn) ~ - g_syn / tau_AMPA
 end
 
 function make_neuron(params, soma_model, synapse_fn, tspan)
     @mtkbuild soma = soma_model()
 end
 
-function connect_neurons(pre_neuron, post_neuron, synapse_type)
+function connect_neurons(pre_neurons, post_neuron, synapse_type)
+    @variables g_syn[1:length(pre_neurons)]
+    for pre_neuron in 1:length(pre_neurons)
+        eq = [g_syn[i](t) ~ ]
+        push!(pre_eqs, post_neuron.)
+
+    end
     synapse_eq_g = get_synapse(synapse_type) # get conductance equation from synapse type
     connected = compose([
         pre_neuron
