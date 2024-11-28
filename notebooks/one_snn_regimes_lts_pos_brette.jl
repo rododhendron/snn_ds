@@ -1,17 +1,19 @@
 ### A Pluto.jl notebook ###
-# v0.20.0
+# v0.20.3
 
 using Markdown
 using InteractiveUtils
 
 # This Pluto notebook uses @bind for interactivity. When running this notebook outside of Pluto, the following 'mock version' of @bind gives bound variables a default value (instead of an error).
 macro bind(def, element)
+    #! format: off
     quote
         local iv = try Base.loaded_modules[Base.PkgId(Base.UUID("6e696c72-6542-2067-7265-42206c756150"), "AbstractPlutoDingetjes")].Bonds.initial_value catch; b -> missing; end
         local el = $(esc(element))
         global $(esc(def)) = Core.applicable(Base.get, el) ? Base.get(el) : iv(el)
         el
     end
+    #! format: on
 end
 
 # ╔═╡ a70f6a56-8f9e-11ef-1a9b-8f0ab1c40c05
@@ -122,7 +124,7 @@ function plot_neuron_value(time, value, p, input_current; start=0, stop=0, xlabe
     sliced_time, sliced_current = get_slice_xy(time, input_current, start=start, stop=stop)
     is_voltage ? hlines!(ax, [p.vthr, p.vrest]; color=1:2) : nothing
     vlines!(ax, [offset]; color=:grey, linestyle=:dashdot)
-	lines!(ax2, sliced_time, sliced_current, color=(:black, 0.3))
+	lines!(ax2, sliced_time, sliced_current, color=(:black, 0.7))
     lines!(ax, sliced_time, sliced_value)
 	xlims!(ax, (start, stop))
     tofile ? save(name, f) : f
@@ -228,9 +230,9 @@ begin
 	elseif experiment == "lts_pos"
 		params = SLVector(iparams; input_value=2e-9, b=0, a=20e-9)
 	elseif experiment == "re_pos"
-		params = SLVector(iparams; input_value=2e-9, a=80e-9)
+		params = SLVector(iparams; input_value=2e-9, a=80e-9, b=0)
 	elseif experiment == "re_neg"
-		params = SLVector(iparams; input_value=-2e-9, a=80e-9)
+		params = SLVector(iparams; input_value=-2e-9, a=80e-9, b=0)
 	elseif experiment == "tc_pos"
 		params = SLVector(iparams; input_value=2e-9, a=50e-9, b=0)
 	elseif experiment == "tc_neg"
@@ -305,7 +307,7 @@ md"cursor definition for plot"
 # ╔═╡ 04a06203-f446-46e2-86d6-3c593f0c67c4
 begin
 before_offset = offset - 200e-3
-after_offset = offset + 2000e-3
+after_offset = offset + 1000e-3
 end
 
 # ╔═╡ 8c4de4f6-20fa-4b27-b438-f69f841c135c

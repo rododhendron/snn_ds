@@ -3,7 +3,7 @@ quickactivate(@__DIR__) # needed to load project env
 
 include("../src/neuron.jl")
 
-using Symbolics, ModelingToolkit
+using Symbolics, ModelingToolkit, DifferentialEquations
 
 using .Neuron
 
@@ -24,6 +24,7 @@ uparams = Neuron.AdExNeuronUParams()
 
 iparams, iuparams = Neuron.map_params(simplified_model, params, uparams)
 
+a = [iparams[1:end-1]; simplified_model.neuron_3.soma.input_value => 1e-9]
 # resolve
-prob = ODEProblem(simplified_model, iuparams, tspan, iparams)
-sol = solve(prob, Vern6(); abstol=1e-9, reltol=1e-9)
+prob = ODEProblem(simplified_model, iuparams, tspan, a)
+sol = solve(prob, Vern6(); abstol=1e-7, reltol=1e-7)

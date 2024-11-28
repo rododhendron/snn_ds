@@ -9,8 +9,8 @@ step_fn(t, iv) = start_input < t < start_input + input_duration ? iv : 0
 
 @mtkmodel Soma begin # AdEx neuron from https://journals.physiology.org/doi/pdf/10.1152/jn.00686.2005
     @variables begin
-        v(t)
-        w(t)
+        v(t) = -65e-3
+        w(t) = 0
         Ie(t), [input = true]
         # Ii(t), [input = true]
         Ib(t), [input = true]
@@ -32,7 +32,7 @@ step_fn(t, iv) = start_input < t < start_input + input_duration ? iv : 0
         D(v) ~ (Je * (vrest - v) + delta * exp((v - vthr) / delta) - w) + Ie + Ib / Cm # voltage dynamic
         D(w) ~ (-w + a * (v - vrest)) / TauW # adaptation dynamic
         Ib ~ step_fn(t, input_value)
-        R ~ 0
+        D(R) ~ 0
     end
     @continuous_events begin
         [v ~ vspike] => [
@@ -46,13 +46,15 @@ end
 @mtkmodel SynapseAMPA begin # AMPA synapse https://neuronaldynamics.epfl.ch/online/Ch3.S1.html#Ch3.E2
     @parameters begin
         tau_ampa
+        vtarget
+        inc_gsyn
     end
     @variables begin
-        g_syn(t)
+        g_syn(t) = 0
     end
     # have to bind I on connect
     @equations begin
-        D(g_syn) ~ - g_syn / tau
+        D(g_syn) ~ -g_syn / tau_ampa
     end
 end
 
@@ -66,7 +68,7 @@ end
     end
     # have to bind I on connect
     @equations begin
-        D(g_syn) ~ - g_syn / tau
+        D(g_syn) ~ -g_syn / tau
     end
 end
 
@@ -75,23 +77,26 @@ end
 Base.@kwdef mutable struct AdExNeuronParams
     vrest::Float64 = -65.0e-3  # Resting membrane potential (V)
     vthr::Float64 = -50.0e-3   # Spike threshold (V)
-    Je::Float64 = 1.0e-9       # Membrane time constant (Siemens S)
+    Je::Float64 = 30.0e-9       # Membrane time constant (Siemens S)
     delta::Float64 = 2.0e-3    # Spike slope factor (V)
-    Cm::Float64 = 1.0       # Membrane capacitance (Farad F)
-    TauW::Float64 = 20.0    # Adaptation time constant (s)
-    a::Float64 = 0.0e-9        # Subthreshold adaptation (A)
+    Cm::Float64 = 281e-12       # Membrane capacitance (Farad F)
+    TauW::Float64 = 144.0e-3    # Adaptation time constant (s)
+    a::Float64 = 40.0e-9        # Subthreshold adaptation (A)
     gl::Float64 = 20e-9     # leak conductance
-    b::Float64 = 0.0e-9
-    input_value::Float64 = 2e-9
+    b::Float64 = 0.08e-9
+    input_value::Float64 = 0
     gmax::Float64 = 6.0e-9
     tau_ampa::Float64 = 5.0e-3
+    vtarget::Float64 = 0
+    vspike::Float64 = 0
+    inc_gsyn::Float64 = 1e-9
 end
 Base.@kwdef mutable struct AdExNeuronUParams
     v::Float64 = -65.0e-3
     w::Float64 = 0.0e-9
     Ie::Float64 = 0
     Ii::Float64 = 0
-    Ib::Float64 = 0
+    Ib::Float64 = 1e-9
     R::Int64 = 0
     g_syn::Float64 = 0
 end
@@ -111,7 +116,7 @@ struct AMPA <: SynapseType end
 struct GABAa <: SynapseType end
 
 function get_synapse(_synapse_type::SIMPLE_E, params) # _ before variable is a convention for a unused variable in function body ; just used for type dispatch
-    @variables g_syn
+    @variables g_syn = 0
     [g_syn ~ params.gl * params.a]
 end
 
@@ -124,7 +129,7 @@ function make_neuron(params, soma_model, tspan, name)
         ODESystem(
             [
                 soma.Ie ~ ampa_syn.g_syn * (soma.v - ampa_syn.vtarget)
-                ], t; name=name
+            ], t; name=name
         ), soma, ampa_syn
     )
     neuron
@@ -134,7 +139,7 @@ function connect_neurons(pre_neurons, post_neuron)
     callbacks = []
     for i in 1:length(pre_neurons)
         push!(callbacks, [pre_neurons[i].soma.v ~ pre_neurons[i].soma.vspike] => [
-            post_neuron.ampa_syn.g_syn ~ post_neuron.ampa_syn.g_syn + post_neuron.ampa_syn.input
+            post_neuron.ampa_syn.g_syn ~ post_neuron.ampa_syn.g_syn + post_neuron.ampa_syn.inc_gsyn
         ])
     end
     callbacks
@@ -151,26 +156,32 @@ end
 
 function instantiate_params(sys_index, params)
     param_value = hasproperty(params, Symbol(sys_index[end])) ? getproperty(params, Symbol(sys_index[end])) : nothing
-    isnothing(param_value) ? nothing : Symbol(join(sys_index, "__")) => param_value
+    # isnothing(param_value) ? nothing : String(Symbol(join(sys_index, "__"))) => param_value
+    isnothing(param_value) ? nothing : sys_index[end] => param_value
 end
 
-popout_t_from_splitted_varname(list_index) = [list_index[1:end-1] ; split(list_index[end], "(")[1]]
+get_varsym_from_syskey(param::SymbolicUtils.BasicSymbolic) = Symbol(split(param |> Symbol |> String, "₊")[end])
+get_varsym_from_syskey(param::SubString) = Symbol(split(param, "₊")[end])
 
-function instantiate_uparams(sys_index, params)
-    replaced_sys_index = popout_t_from_splitted_varname(sys_index)
-    param_value = hasproperty(params, Symbol(replaced_sys_index[end])) ? getproperty(params, Symbol(replaced_sys_index[end])) : nothing
-    isnothing(param_value) ? nothing : Symbol(join(replaced_sys_index, "__")) => param_value
+function instantiate_param(parameter, params)
+    if hasproperty(params, get_varsym_from_syskey(parameter))
+        parameter => getproperty(params, get_varsym_from_syskey(parameter))
+    end
+end
+
+function instantiate_uparam(parameter, uparams)
+    replaced_parameter = split(parameter |> Symbol |> String, "(")[1]
+    if hasproperty(uparams, get_varsym_from_syskey(replaced_parameter))
+        parameter => getproperty(uparams, get_varsym_from_syskey(replaced_parameter))
+    end
 end
 
 function map_params(network, params, uparams)
-    parser_value = "₊"
-    parameters_to_replace = parameters(network) .|> Symbol .|> String
-    uparameters_to_replace = unknowns(network) .|> Symbol .|> String
-    splitted_parameters = split.(parameters_to_replace, Ref(parser_value))
-    splitted_uparameters = split.(uparameters_to_replace, Ref(parser_value))
+    parameters_to_replace = parameters(network)
+    uparameters_to_replace = unknowns(network)
 
-    map_params = instantiate_params.(splitted_parameters, Ref(params)) |> x -> filter(!isnothing, x)
-    map_uparams = instantiate_uparams.(splitted_uparameters, Ref(uparams)) |> x -> filter(!isnothing, x)
+    map_params = instantiate_param.(parameters_to_replace, Ref(params)) |> x -> filter(!isnothing, x)
+    map_uparams = instantiate_uparam.(uparameters_to_replace, Ref(uparams)) |> x -> filter(!isnothing, x)
 
     (map_params, map_uparams)
 end
