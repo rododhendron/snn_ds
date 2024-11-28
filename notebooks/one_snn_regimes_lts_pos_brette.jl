@@ -168,9 +168,6 @@ md"# model equations"
 # ╔═╡ 3ee993ee-8c2c-44a5-8e7d-b126088eaa45
 
 
-# ╔═╡ d0658c20-b9c4-4928-9b70-32073474e7ed
-@parameters input_potential, input_value
-
 # ╔═╡ 5de56251-6600-4a2b-9f83-65217ac5eca7
 begin
 	# Create expression for @parameters macro
@@ -195,6 +192,9 @@ begin
 		D(R) ~ 0
 	]
 end
+
+# ╔═╡ d0658c20-b9c4-4928-9b70-32073474e7ed
+@parameters input_potential, input_value
 
 # ╔═╡ 93fb8a6c-7012-4644-8308-86dd1d39a4db
 md"# events definition"

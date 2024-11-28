@@ -177,18 +177,6 @@ begin
 	@bind experiment Select(["ampa", "gabaa", "gabaa_and_post_input"])
 end
 
-# ╔═╡ 5ac39ee3-e1e8-498a-b33a-bb0fc1e62452
-
-
-# ╔═╡ 6bfd2bf0-5e48-4b54-b66d-9b586900be3a
-
-
-# ╔═╡ 995f01f2-1e4c-48c1-a1d1-433d9ab9fb8d
-
-
-# ╔═╡ d0658c20-b9c4-4928-9b70-32073474e7ed
-@parameters gGABAmax tau_GABAa_rise tau_GABAa_fast EGABA input_potential
-
 # ╔═╡ 5de56251-6600-4a2b-9f83-65217ac5eca7
 begin
 	# Create expression for @parameters macro
@@ -232,8 +220,20 @@ begin
 	]
 end
 
+# ╔═╡ 5ac39ee3-e1e8-498a-b33a-bb0fc1e62452
+
+
+# ╔═╡ 6bfd2bf0-5e48-4b54-b66d-9b586900be3a
+
+
+# ╔═╡ 995f01f2-1e4c-48c1-a1d1-433d9ab9fb8d
+
+
 # ╔═╡ d586f098-fb69-4200-ac6b-e12975cd3987
 eqs
+
+# ╔═╡ d0658c20-b9c4-4928-9b70-32073474e7ed
+@parameters gGABAmax tau_GABAa_rise tau_GABAa_fast EGABA input_potential
 
 # ╔═╡ 93fb8a6c-7012-4644-8308-86dd1d39a4db
 md"# events definition"
