@@ -1,5 +1,5 @@
 module Neuron
-using ModelingToolkit, Parameters, StringDistances
+using ModelingToolkit, Parameters, StringDistances, Transducers, BangBang, StaticArrays
 using ModelingToolkit: t_nounits as t, D_nounits as D
 
 const start_input::Float64 = 200e-3
@@ -121,12 +121,16 @@ function get_synapse_eq(_synapse_type::GABAa, post_neuron::ODESystem)::Equation 
     Equation(post_neuron.gabaa_syn.g_syn, post_neuron.gabaa_syn.g_syn + post_neuron.gabaa_syn.inc_gsyn)
 end
 
+function get_synapse_eq(_synapse_type::Nothing, post_neuron::ODESystem)::Nothing # _ before variable is a convention for a unused variable in function body ; just used for type dispatch
+    nothing
+end
+
 function make_neuron(params, soma_model, tspan, name)::ODESystem
     @named soma = soma_model(; name=Symbol("soma"))
     @named ampa_syn = SynapseAMPA(; name=Symbol("ampa_syn"))
     @named gabaa_syn = SynapseGABAa(; name=Symbol("gabaa_syn"))
 
-    neuron = compose(
+    neuron = ModelingToolkit.compose(
         ODESystem(
             [
                 soma.Ie ~ ampa_syn.g_syn * (soma.v - ampa_syn.vtarget_exc)
@@ -144,32 +148,50 @@ make_events(premises::Vector{Equation}, pre::ODESystem)::Pair{Vector{Equation},V
     ], premises
 )
 
-function connect_neurons(pre_neuron::ODESystem, post_neurons::Vector{ODESystem}, synapse_type::SynapseType, prob::Float64)::Pair{Vector{Equation},Vector{Equation}}
-    callbacks::Vector{Equation} = []
-    @inbounds for i in 1:length(post_neurons)
-        if rand() < prob && pre_neuron.name != post_neurons[i].name
-            push!(callbacks, get_synapse_eq(synapse_type, post_neurons[i]))
-        end
-    end
-    make_events(callbacks, pre_neuron)
+@enum NeuronType begin
+    excitator
+    inhibitor
 end
 
-function connect_many_neurons(pre_neurons::Vector{ODESystem}, post_neurons::Vector{ODESystem}, synapse_type::SynapseType, prob::Float64)::Vector{Pair{Vector{Equation},Vector{Equation}}}
+struct ConnectionRule
+    pre_neurons_type::NeuronType
+    post_neurons_type::NeuronType
+    synapse_type::SynapseType
+    prob::Float64
+end
+
+function instantiate_connections(id_map, map_connect, post_neurons)::Vector{Pair{Vector{Equation},Vector{Equation}}}
     all_callbacks::Vector{Pair{Vector{Equation},Vector{Equation}}} = []
-    @inbounds for i in 1:length(pre_neurons)
-        push!(all_callbacks, connect_neurons(pre_neurons[i], post_neurons, synapse_type, prob))
+    for (i, neuron) in id_map
+        post_neurons_syn = map_connect[i, :]
+        post_neurons_callbacks::Vector{Equation} = get_synapse_eq.(post_neurons_syn, post_neurons) |> x -> filter(!isnothing, x)
+
+        current_neuron_callbacks = make_events(post_neurons_callbacks, neuron)
+        push!(all_callbacks, current_neuron_callbacks)
     end
     all_callbacks
 end
 
-function make_network(neurons::Vector{ODESystem}, connections::Vector{Pair{Vector{Equation},Vector{Equation}}})::ODESystem
-    @mtkbuild network = compose(ODESystem([], t; continuous_events=connections, name=:connected_neurons), neurons)
+function init_connection_map(e_neurons::Vector{ODESystem}, i_neurons::Vector{ODESystem}, connection_rules::Vector{ConnectionRule})
+    prob_filter(prob) = Filter(_x -> rand() <= prob)
+    neurons = vcat(e_neurons, i_neurons)
+    n_neurons = length(e_neurons) + length(i_neurons)
+    id_map = [(i, neurons[i]) for i in 1:n_neurons]
+    map_connect = Array{Union{Nothing, SynapseType}}(nothing, n_neurons, n_neurons)
+    for rule in connection_rules
+        pre_neurons_ids = rule.pre_neurons_type == excitator ? range(1, length(e_neurons)) : range(length(e_neurons)+1, n_neurons)
+        for i in pre_neurons_ids
+            post_neurons_ids = rule.post_neurons_type == excitator ? range(1, length(e_neurons)) : range(length(e_neurons)+1, n_neurons)
+            post_prob_neurons_ids = post_neurons_ids |> prob_filter(rule.prob) |> collect
+
+            map_connect[pre_neurons_ids, post_prob_neurons_ids] .= Ref(rule.synapse_type)
+        end
+    end
+    (id_map, map_connect)
 end
 
-function instantiate_params(sys_index, params)::Union{nothing,Pair{Symbol,Union{Float64,Int64}}}
-    param_value = hasproperty(params, Symbol(sys_index[end])) ? getproperty(params, Symbol(sys_index[end])) : nothing
-    # isnothing(param_value) ? nothing : String(Symbol(join(sys_index, "__"))) => param_value
-    isnothing(param_value) ? nothing : sys_index[end] => param_value
+function make_network(neurons::Vector{ODESystem}, connections::Vector{Pair{Vector{Equation},Vector{Equation}}})::ODESystem
+    @mtkbuild network = ModelingToolkit.compose(ODESystem([], t; continuous_events=connections, name=:connected_neurons), neurons)
 end
 
 get_varsym_from_syskey(param::SymbolicUtils.BasicSymbolic)::Symbol = Symbol(split(param |> Symbol |> String, "₊")[end])
