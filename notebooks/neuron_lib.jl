@@ -16,7 +16,10 @@ end
 using Symbolics, ModelingToolkit, DifferentialEquations, RecursiveArrayTools, SymbolicIndexingInterface, CairoMakie
 
 # ╔═╡ 16720d97-2552-4852-a011-4ea19c8b9d8b
-include("../src/neuron.jl")
+begin 
+	include("../src/utils.jl")
+	include("../src/neuron.jl")
+end
 
 # ╔═╡ cd62780e-8a5a-49eb-b3d1-33c88e966332
 html"""<style>
@@ -27,6 +30,9 @@ pluto-editor main {
 	margin-left: auto;
 }
 """
+
+# ╔═╡ 8eda90d1-5695-47d7-a435-79c49a17c50e
+
 
 # ╔═╡ fa7d1b52-e46b-4dc3-8f08-808e36d487ee
 offset = 200e-3
@@ -99,7 +105,7 @@ begin
 end
 
 # ╔═╡ 88923549-1fb1-4337-aaa7-885029ca2321
-params = Neuron.AdExNeuronParams(;input_value=1e-9)
+params = Neuron.AdExNeuronParams()
 
 # ╔═╡ c39f4a5c-86ec-4e92-a20f-965cf37fc3cb
 @time i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)")) for i in 1:ni_neurons]
@@ -140,6 +146,9 @@ connections = Neuron.instantiate_connections(id_map, map_connect, vcat(e_neurons
 # ╔═╡ 65ac9a41-e76e-419c-a1ab-21795424ddb6
 @time network = Neuron.make_network(vcat(e_neurons, i_neurons), connections)
 
+# ╔═╡ dea89bed-20c5-447b-aaea-510434099fe3
+tree = Utils.make_param_tree(network)
+
 # ╔═╡ acf117c9-cbbc-4841-8610-256b8c55c23d
 equations(neurons[1])
 
@@ -160,6 +169,12 @@ uparams = Neuron.AdExNeuronUParams()
 
 # ╔═╡ ffe8ec7d-b1ea-4b76-9d0b-86b4cc74adb5
 iparams, iuparams = Neuron.map_params(simplified_model, params, uparams)
+
+# ╔═╡ 5f3e4953-eede-48e1-813c-3c8361699096
+input_e = Utils.fetch_tree(["e_neuron_1", "Ib"], tree)
+
+# ╔═╡ b26ac509-3cf7-4c03-b269-06d6c8b3ab87
+push!(iparams, [input_e[1]] => 1.0e-9)
 
 # ╔═╡ 47848510-7d59-4c34-9bb9-afbee580c07b
 # a = [iparams[1:end-1]; simplified_model.neuron_2.soma.input_value => 1e-9]
@@ -231,10 +246,35 @@ typeof(getproperty(network.e_neuron_1.soma, :v))
 # ╔═╡ 45f54af3-86f6-4f2e-949d-7db5f6ed3665
 sol[getproperty(network.e_neuron_1.soma, :v)]
 
+# ╔═╡ 6bb1c962-14e4-4f05-9de9-86be865b2394
+
+
+# ╔═╡ f40edca9-7411-429e-926c-0366363c2d88
+res = Utils.fetch_tree(["e_neuron", "R"], tree)
+
+# ╔═╡ d0a1db60-e74a-4ea3-9ef4-50cf40dfbbf6
+
+
+# ╔═╡ 0fb67ed8-5118-4a41-9d84-918a6f95144d
+hcat(sol[res]...)
+
+# ╔═╡ 206676ad-2e5a-4a64-bc8d-054d30c805d7
+ris = Utils.fetch_tree(["i_neuron", "R"], tree)
+
+# ╔═╡ 54323c9e-d5ef-409c-827e-5abaaf0c8e9e
+scatter(sol[res])
+
+# ╔═╡ 18701403-6cff-49a4-a3c2-d37f8a80c09a
+parameters(network)
+
+# ╔═╡ 340fd247-1ef3-4f21-bb4e-95372cb9bc1a
+res
+
 # ╔═╡ Cell order:
 # ╠═e86eea66-ad59-11ef-2550-cf2588eae9d6
 # ╠═31c85e65-cf3e-465a-86da-9a8547f7bec0
 # ╠═cd62780e-8a5a-49eb-b3d1-33c88e966332
+# ╠═8eda90d1-5695-47d7-a435-79c49a17c50e
 # ╠═16720d97-2552-4852-a011-4ea19c8b9d8b
 # ╠═2d4149ce-1a89-4087-a7e2-6cf48778ab51
 # ╠═fa7d1b52-e46b-4dc3-8f08-808e36d487ee
@@ -255,6 +295,7 @@ sol[getproperty(network.e_neuron_1.soma, :v)]
 # ╠═1479455e-162a-4f2a-89d0-45864839d6bb
 # ╠═ebd8e444-a2d1-4f8b-908f-fc1b2c44d4b8
 # ╠═65ac9a41-e76e-419c-a1ab-21795424ddb6
+# ╠═dea89bed-20c5-447b-aaea-510434099fe3
 # ╠═acf117c9-cbbc-4841-8610-256b8c55c23d
 # ╠═d9062ff6-5701-4e24-8ad8-876e669bd0e2
 # ╠═462d463a-7c37-4b89-8c53-6a3a3180503a
@@ -262,6 +303,8 @@ sol[getproperty(network.e_neuron_1.soma, :v)]
 # ╠═01baa3b5-9220-40be-b783-a194a7703b65
 # ╠═d69ada25-0300-4f86-9c2f-39f23ca4a9de
 # ╠═ffe8ec7d-b1ea-4b76-9d0b-86b4cc74adb5
+# ╠═5f3e4953-eede-48e1-813c-3c8361699096
+# ╠═b26ac509-3cf7-4c03-b269-06d6c8b3ab87
 # ╠═47848510-7d59-4c34-9bb9-afbee580c07b
 # ╠═1fc4591a-ebbf-424f-9862-bb19ba7b0f38
 # ╠═704f5c30-5c26-4dce-b152-24609263d70d
@@ -280,3 +323,11 @@ sol[getproperty(network.e_neuron_1.soma, :v)]
 # ╠═f56a6e15-5df9-4c77-b5d6-4157e9eb9162
 # ╠═ffe4ec62-9dc4-4cb7-bd40-774db413c6ce
 # ╠═45f54af3-86f6-4f2e-949d-7db5f6ed3665
+# ╠═6bb1c962-14e4-4f05-9de9-86be865b2394
+# ╠═f40edca9-7411-429e-926c-0366363c2d88
+# ╠═d0a1db60-e74a-4ea3-9ef4-50cf40dfbbf6
+# ╠═0fb67ed8-5118-4a41-9d84-918a6f95144d
+# ╠═206676ad-2e5a-4a64-bc8d-054d30c805d7
+# ╠═54323c9e-d5ef-409c-827e-5abaaf0c8e9e
+# ╠═18701403-6cff-49a4-a3c2-d37f8a80c09a
+# ╠═340fd247-1ef3-4f21-bb4e-95372cb9bc1a

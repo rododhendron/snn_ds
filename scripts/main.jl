@@ -36,11 +36,12 @@ simplified_model = network
 
 @time iparams, iuparams = Neuron.map_params(simplified_model, params, uparams)
 
+@show iparams
 # a = [iparams[1:end-1]; simplified_model.neuron_3.soma.input_value => 1e-9]
 # resolve
 @time prob = ODEProblem(simplified_model, iuparams, tspan, iparams)
 
-sol = solve(prob, Vern6(); abstol=1e-4, reltol=1e-4)
+sol = solve(prob, Vern6(); abstol=1e-6, reltol=1e-6)
 
 tree = Utils.make_param_tree(simplified_model)
 

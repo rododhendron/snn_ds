@@ -2,7 +2,7 @@ module Utils
 using ModelingToolkit, DifferentialEquations, Symbolics, Transducers
 
 mutable struct ParamNode
-    nodes::Vector{Union{ParamNode, Num}}
+    nodes::Vector{Union{ParamNode,Num}}
     system::ODESystem
 end
 
@@ -53,6 +53,6 @@ end
 function fetch_uparameters_from_symbol(model::ODESystem, sym_to_fetch::Symbol)::Vector{SymbolicUtils.BasicSymbolic{Real}}
     replaced_parameter(param) = split(param |> Symbol |> String, "(")[1]
     params = parameters(model) .|> replaced_parameter
-
 end
+
 end

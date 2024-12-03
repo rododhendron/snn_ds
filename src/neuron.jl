@@ -88,6 +88,7 @@ Base.@kwdef struct AdExNeuronParams
     vtarget_inh::Float64 = -75e-3
     vspike::Float64 = 0
     inc_gsyn::Float64 = 1e-9
+    e_neuron_1__soma_a__input_value::Float64 = 2e-9
 end
 Base.@kwdef struct AdExNeuronUParams
     v::Float64 = -65.0e-3
@@ -177,11 +178,11 @@ function init_connection_map(e_neurons::Vector{ODESystem}, i_neurons::Vector{ODE
     neurons = vcat(e_neurons, i_neurons)
     n_neurons = length(e_neurons) + length(i_neurons)
     id_map = [(i, neurons[i]) for i in 1:n_neurons]
-    map_connect = Array{Union{Nothing, SynapseType}}(nothing, n_neurons, n_neurons)
+    map_connect = Array{Union{Nothing,SynapseType}}(nothing, n_neurons, n_neurons)
     for rule in connection_rules
-        pre_neurons_ids = rule.pre_neurons_type == excitator ? range(1, length(e_neurons)) : range(length(e_neurons)+1, n_neurons)
+        pre_neurons_ids = rule.pre_neurons_type == excitator ? range(1, length(e_neurons)) : range(length(e_neurons) + 1, n_neurons)
         for i in pre_neurons_ids
-            post_neurons_ids = rule.post_neurons_type == excitator ? range(1, length(e_neurons)) : range(length(e_neurons)+1, n_neurons)
+            post_neurons_ids = rule.post_neurons_type == excitator ? range(1, length(e_neurons)) : range(length(e_neurons) + 1, n_neurons)
             post_prob_neurons_ids = post_neurons_ids |> prob_filter(rule.prob) |> collect
 
             map_connect[pre_neurons_ids, post_prob_neurons_ids] .= Ref(rule.synapse_type)
@@ -194,19 +195,32 @@ function make_network(neurons::Vector{ODESystem}, connections::Vector{Pair{Vecto
     @mtkbuild network = ModelingToolkit.compose(ODESystem([], t; continuous_events=connections, name=:connected_neurons), neurons)
 end
 
-get_varsym_from_syskey(param::SymbolicUtils.BasicSymbolic)::Symbol = Symbol(split(param |> Symbol |> String, "₊")[end])
+get_varsym_from_syskey(param::SymbolicUtils.BasicSymbolic)::Symbol = Symbol(split(param |> Symbol |> String, "₊"))
 get_varsym_from_syskey(param::SubString)::Symbol = Symbol(split(param, "₊")[end])
 
-function instantiate_param(parameter::SymbolicUtils.BasicSymbolic, params::AdExNeuronParams)::Pair{SymbolicUtils.BasicSymbolic,Union{Float64,Int64}}
-    if hasproperty(params, get_varsym_from_syskey(parameter))
-        parameter => getproperty(params, get_varsym_from_syskey(parameter))
+function best_match_varsym(param::Vector{Symbol}, params)
+    last_sym_p = param[end]
+    naive_match = [p for p in propertynames(params) if p == last_sym_p]
+    if length(naive_match) > 1
+        found_match = findnearest(param |> String, propertynames(params) .|> String, Levenshtein())
+        getproperty(params, found_match)
+    else
+        length(naive_match) == 1 ? first(naive_match) : nothing
     end
 end
 
-function instantiate_uparam(parameter::SymbolicUtils.BasicSymbolic, uparams::AdExNeuronUParams)::Pair{SymbolicUtils.BasicSymbolic,Union{Float64,Int64}}
+function instantiate_param(parameter::SymbolicUtils.BasicSymbolic, params::AdExNeuronParams)::Union{Pair{SymbolicUtils.BasicSymbolic,Union{Float64,Int64}},Nothing}
+    best_match(param) = best_match_varsym(param, params)
+    if hasproperty(params, get_varsym_from_syskey(parameter))
+        parameter => getproperty(params, get_varsym_from_syskey(parameter) |> best_match)
+    end
+end
+
+function instantiate_uparam(parameter::SymbolicUtils.BasicSymbolic, uparams::AdExNeuronUParams)::Union{Pair{SymbolicUtils.BasicSymbolic,Union{Float64,Int64}},Nothing}
+    best_match(param) = best_match_varsym(param, params)
     replaced_parameter = split(parameter |> Symbol |> String, "(")[1]
     if hasproperty(uparams, get_varsym_from_syskey(replaced_parameter))
-        parameter => getproperty(uparams, get_varsym_from_syskey(replaced_parameter))
+        parameter => get_varsym_from_syskey(replaced_parameter) |> best_match
     end
 end
 
