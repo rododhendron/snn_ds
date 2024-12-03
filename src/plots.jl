@@ -35,7 +35,10 @@ function plot_spikes(spikes; start=0, stop=0, xlabel="", ylabel="", title="", na
     f, ax = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title)
     xlims!(ax, (start, stop))
     spikes_in_window = [spike for spike in spikes if spike != 0 && start < spike < stop]
-    vlines!(ax, spikes_in_window; color=:grey)
+    dims = size(spikes)
+    int_range = 1:dims[1]
+    map_zip
+    scatter!(ax, spikes_in_window; color=:grey)
     f
 end
 

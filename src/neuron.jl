@@ -88,7 +88,7 @@ Base.@kwdef struct AdExNeuronParams
     vtarget_inh::Float64 = -75e-3
     vspike::Float64 = 0
     inc_gsyn::Float64 = 1e-9
-    e_neuron_1__soma_a__input_value::Float64 = 2e-9
+    e_neuron_1__soma__input_value::Float64 = 2e-9
 end
 Base.@kwdef struct AdExNeuronUParams
     v::Float64 = -65.0e-3
@@ -195,32 +195,53 @@ function make_network(neurons::Vector{ODESystem}, connections::Vector{Pair{Vecto
     @mtkbuild network = ModelingToolkit.compose(ODESystem([], t; continuous_events=connections, name=:connected_neurons), neurons)
 end
 
-get_varsym_from_syskey(param::SymbolicUtils.BasicSymbolic)::Symbol = Symbol(split(param |> Symbol |> String, "₊"))
-get_varsym_from_syskey(param::SubString)::Symbol = Symbol(split(param, "₊")[end])
+get_varsym_from_syskey(param::SymbolicUtils.BasicSymbolic)::Symbol = split(param |> Symbol |> String, "₊") |> last |> Symbol
+get_varsym_from_syskey(param::Symbol)::Symbol = split(param |> String, "₊") |> last |> Symbol
+get_varsym_from_syskey(param::SubString)::Symbol = split(param, "₊") |> last |> Symbol
+varsym_to_vec(param::Symbol)::Vector = split(param |> String, "₊")
 
-function best_match_varsym(param::Vector{Symbol}, params)
-    last_sym_p = param[end]
-    naive_match = [p for p in propertynames(params) if p == last_sym_p]
-    if length(naive_match) > 1
-        found_match = findnearest(param |> String, propertynames(params) .|> String, Levenshtein())
-        getproperty(params, found_match)
+function match_param(to_match, to_find, match_nums::Bool)::Bool
+    if match_nums
+        to_match == to_find
     else
-        length(naive_match) == 1 ? first(naive_match) : nothing
+        digits_to_match = match(r"\d*").captures[1]
+        to_find_replaced = replace(to_find, r"\d*" => digits_to_match)
+        to_match == to_find_replaced
     end
+end
+
+function process_vecs(vec_to_find, vec_to_match, match_nums::Bool)::Bool
+    if isempty(vec_to_find)
+        return true
+    end
+    if length(vec_to_find) != length(vec_to_match) || !match_param(vec_to_find[1], vec_to_match[1], match_nums)
+        return false
+    end
+    process_vecs(vec_to_find[2:end], vec_to_match[2:end], match_nums::Bool)
+end
+
+function find_param(param_to_find, params, match_nums::Bool)
+    fallback = get_varsym_from_syskey(param_to_find)
+    params_vecs = propertynames(params) .|> x -> split(x |> String, "__")
+    param_to_find_vec = param_to_find |> varsym_to_vec
+    match_mask = process_vecs.(Ref(param_to_find_vec), params_vecs, match_nums)
+    match_idx = findall(match_mask)
+    matched_properties = propertynames(params)[match_idx]
+    length(matched_properties) == 1 ? matched_properties |> first : fallback
 end
 
 function instantiate_param(parameter::SymbolicUtils.BasicSymbolic, params::AdExNeuronParams)::Union{Pair{SymbolicUtils.BasicSymbolic,Union{Float64,Int64}},Nothing}
-    best_match(param) = best_match_varsym(param, params)
+    best_match(param) = find_param(param, params, true)
     if hasproperty(params, get_varsym_from_syskey(parameter))
-        parameter => getproperty(params, get_varsym_from_syskey(parameter) |> best_match)
+        res = parameter => getproperty(params, parameter |> Symbol |> best_match |> Symbol)
     end
+    @show res
 end
 
 function instantiate_uparam(parameter::SymbolicUtils.BasicSymbolic, uparams::AdExNeuronUParams)::Union{Pair{SymbolicUtils.BasicSymbolic,Union{Float64,Int64}},Nothing}
-    best_match(param) = best_match_varsym(param, params)
     replaced_parameter = split(parameter |> Symbol |> String, "(")[1]
     if hasproperty(uparams, get_varsym_from_syskey(replaced_parameter))
-        parameter => get_varsym_from_syskey(replaced_parameter) |> best_match
+        parameter => getproperty(uparams, get_varsym_from_syskey(replaced_parameter))
     end
 end
 

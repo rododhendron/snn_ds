@@ -104,15 +104,6 @@ begin
 	ne_neurons = 8
 end
 
-# ╔═╡ 88923549-1fb1-4337-aaa7-885029ca2321
-params = Neuron.AdExNeuronParams()
-
-# ╔═╡ c39f4a5c-86ec-4e92-a20f-965cf37fc3cb
-@time i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)")) for i in 1:ni_neurons]
-
-# ╔═╡ 9078ad20-c2b3-43e4-a0cf-571d857bfa41
-@time e_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("e_neuron_$(i)")) for i in 1:ne_neurons]
-
 # ╔═╡ 32e92fca-36d3-4ebd-a228-fd6b3f965694
 
 
@@ -125,14 +116,26 @@ ei_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.inhibitor, Neuron.AMPA(
 # ╔═╡ 70d85f5a-8565-4140-8f7a-f025040a48af
 ie_rule = Neuron.ConnectionRule(Neuron.inhibitor, Neuron.excitator, Neuron.GABAa(), 1.0)
 
+# ╔═╡ 01e97fc9-d250-4669-b642-b1357401b275
+map_connect_map = Dict(Neuron.AMPA() => 1, Neuron.GABAa() => -1, nothing => 0)
+
+# ╔═╡ acf117c9-cbbc-4841-8610-256b8c55c23d
+equations(neurons[1])
+
+# ╔═╡ d9062ff6-5701-4e24-8ad8-876e669bd0e2
+
+
+# ╔═╡ c39f4a5c-86ec-4e92-a20f-965cf37fc3cb
+@time i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)")) for i in 1:ni_neurons]
+
+# ╔═╡ 9078ad20-c2b3-43e4-a0cf-571d857bfa41
+@time e_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("e_neuron_$(i)")) for i in 1:ne_neurons]
+
 # ╔═╡ ac085539-5ace-4b3f-89ad-cc76432edb17
 (id_map, map_connect) = Neuron.init_connection_map(e_neurons, i_neurons, vcat(ee_rule, ei_rule, ie_rule))
 
 # ╔═╡ 621b2c5e-4b7a-4d63-8dd6-3d68b7c6694a
 map_connect
-
-# ╔═╡ 01e97fc9-d250-4669-b642-b1357401b275
-map_connect_map = Dict(Neuron.AMPA() => 1, Neuron.GABAa() => -1, nothing => 0)
 
 # ╔═╡ 3c548ddc-61bc-4adb-911a-a357fa370270
 heatmap_connect = get.(Ref(map_connect_map), map_connect, 0)
@@ -149,17 +152,11 @@ connections = Neuron.instantiate_connections(id_map, map_connect, vcat(e_neurons
 # ╔═╡ dea89bed-20c5-447b-aaea-510434099fe3
 tree = Utils.make_param_tree(network)
 
-# ╔═╡ acf117c9-cbbc-4841-8610-256b8c55c23d
-equations(neurons[1])
-
-# ╔═╡ d9062ff6-5701-4e24-8ad8-876e669bd0e2
-
-
 # ╔═╡ 462d463a-7c37-4b89-8c53-6a3a3180503a
 simplified_model = network
 
 # ╔═╡ 02ca7412-77ef-4597-97d4-800572f92c84
-simplified_model.neuron_1.soma.Ib
+simplified_model.e_neuron_1.soma.Ib
 
 # ╔═╡ 01baa3b5-9220-40be-b783-a194a7703b65
 continuous_events(simplified_model)
@@ -270,6 +267,15 @@ parameters(network)
 # ╔═╡ 340fd247-1ef3-4f21-bb4e-95372cb9bc1a
 res
 
+# ╔═╡ 88923549-1fb1-4337-aaa7-885029ca2321
+# ╠═╡ disabled = true
+#=╠═╡
+params = Neuron.AdExNeuronParams()
+  ╠═╡ =#
+
+# ╔═╡ bd02cf83-fb63-4a31-94fa-711c5701ac61
+params = Neuron.AdExNeuronParams()
+
 # ╔═╡ Cell order:
 # ╠═e86eea66-ad59-11ef-2550-cf2588eae9d6
 # ╠═31c85e65-cf3e-465a-86da-9a8547f7bec0
@@ -301,6 +307,7 @@ res
 # ╠═462d463a-7c37-4b89-8c53-6a3a3180503a
 # ╠═02ca7412-77ef-4597-97d4-800572f92c84
 # ╠═01baa3b5-9220-40be-b783-a194a7703b65
+# ╠═bd02cf83-fb63-4a31-94fa-711c5701ac61
 # ╠═d69ada25-0300-4f86-9c2f-39f23ca4a9de
 # ╠═ffe8ec7d-b1ea-4b76-9d0b-86b4cc74adb5
 # ╠═5f3e4953-eede-48e1-813c-3c8361699096
