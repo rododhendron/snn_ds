@@ -14,7 +14,7 @@ n_neurons = 10
 i_neurons = 3
 e_neurons = 3
 
-@time params = Neuron.AdExNeuronParams(; input_value=1e-9)
+@time params = Neuron.AdExNeuronParams()
 @time i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)")) for i in 1:i_neurons]
 @time e_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("e_neuron_$(i)")) for i in 1:e_neurons]
 
@@ -34,9 +34,8 @@ simplified_model = network
 # infere params
 @time uparams = Neuron.AdExNeuronUParams()
 
-@time iparams, iuparams = Neuron.map_params(simplified_model, params, uparams)
+@time iparams, iuparams = Neuron.map_params(simplified_model, params, uparams; match_nums=false)
 
-@show iparams
 # a = [iparams[1:end-1]; simplified_model.neuron_3.soma.input_value => 1e-9]
 # resolve
 @time prob = ODEProblem(simplified_model, iuparams, tspan, iparams)

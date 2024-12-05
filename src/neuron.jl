@@ -204,8 +204,11 @@ function match_param(to_match, to_find, match_nums::Bool)::Bool
     if match_nums
         to_match == to_find
     else
-        digits_to_match = match(r"\d*").captures[1]
-        to_find_replaced = replace(to_find, r"\d*" => digits_to_match)
+        matched_param = match(r"\D*(\d+)", to_match)
+        to_find_replaced = isnothing(matched_param) ? to_find : replace(to_find, r"(\d+)" => matched_param.captures[1])
+
+        @show to_find_replaced
+        @show to_match
         to_match == to_find_replaced
     end
 end
@@ -227,11 +230,12 @@ function find_param(param_to_find, params, match_nums::Bool)
     match_mask = process_vecs.(Ref(param_to_find_vec), params_vecs, match_nums)
     match_idx = findall(match_mask)
     matched_properties = propertynames(params)[match_idx]
+    @show matched_properties
     length(matched_properties) == 1 ? matched_properties |> first : fallback
 end
 
-function instantiate_param(parameter::SymbolicUtils.BasicSymbolic, params::AdExNeuronParams)::Union{Pair{SymbolicUtils.BasicSymbolic,Union{Float64,Int64}},Nothing}
-    best_match(param) = find_param(param, params, true)
+function instantiate_param(parameter::SymbolicUtils.BasicSymbolic, params::AdExNeuronParams, match_nums::Bool)::Union{Pair{SymbolicUtils.BasicSymbolic,Union{Float64,Int64}},Nothing}
+    best_match(param) = find_param(param, params, match_nums)
     if hasproperty(params, get_varsym_from_syskey(parameter))
         res = parameter => getproperty(params, parameter |> Symbol |> best_match |> Symbol)
     end
@@ -245,11 +249,11 @@ function instantiate_uparam(parameter::SymbolicUtils.BasicSymbolic, uparams::AdE
     end
 end
 
-function map_params(network::ODESystem, params::AdExNeuronParams, uparams::AdExNeuronUParams)::Tuple{Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}},Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}}}
+function map_params(network::ODESystem, params::AdExNeuronParams, uparams::AdExNeuronUParams; match_nums::Bool=true)::Tuple{Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}},Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}}}
     parameters_to_replace = parameters(network)
     uparameters_to_replace = unknowns(network)
 
-    map_params = instantiate_param.(parameters_to_replace, Ref(params)) |> x -> filter(!isnothing, x)
+    map_params = instantiate_param.(parameters_to_replace, Ref(params), match_nums) |> x -> filter(!isnothing, x)
     map_uparams = instantiate_uparam.(uparameters_to_replace, Ref(uparams)) |> x -> filter(!isnothing, x)
 
     (map_params, map_uparams)

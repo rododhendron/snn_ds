@@ -31,13 +31,17 @@ function plot_neuron_value(time, value, p, spikes; start=0, stop=0, xlabel="", y
     tofile ? save(name, f) : f
 end
 
+function sol_to_spikes(spikes)
+    dims = size(spikes)
+    int_range = 1:dims[1]
+    spikes_in_window = Int.(spikes) .|> x -> x * int_range
+    @show spikes_in_window
+end
+
 function plot_spikes(spikes; start=0, stop=0, xlabel="", ylabel="", title="", name="")
     f, ax = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title)
     xlims!(ax, (start, stop))
-    spikes_in_window = [spike for spike in spikes if spike != 0 && start < spike < stop]
-    dims = size(spikes)
-    int_range = 1:dims[1]
-    map_zip
+    spikes_in_window = sol_to_spikes(spikes)
     scatter!(ax, spikes_in_window; color=:grey)
     f
 end

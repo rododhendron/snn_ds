@@ -104,6 +104,12 @@ begin
 	ne_neurons = 8
 end
 
+# ╔═╡ 88923549-1fb1-4337-aaa7-885029ca2321
+# ╠═╡ disabled = true
+#=╠═╡
+params = Neuron.AdExNeuronParams()
+  ╠═╡ =#
+
 # ╔═╡ 32e92fca-36d3-4ebd-a228-fd6b3f965694
 
 
@@ -124,6 +130,9 @@ equations(neurons[1])
 
 # ╔═╡ d9062ff6-5701-4e24-8ad8-876e669bd0e2
 
+
+# ╔═╡ bd02cf83-fb63-4a31-94fa-711c5701ac61
+params = Neuron.AdExNeuronParams()
 
 # ╔═╡ c39f4a5c-86ec-4e92-a20f-965cf37fc3cb
 @time i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)")) for i in 1:ni_neurons]
@@ -214,6 +223,17 @@ plot_neuron_value(sol.t, sol[network.e_neuron_1.soma.v], params, sol[network.e_n
 	tofile=false
 )
 
+# ╔═╡ a81c6385-0952-4005-8534-afd24f7a1a77
+plot_neuron_value(sol.t, sol[network.e_neuron_2.soma.v], params, sol[network.e_neuron_2.soma.Ie];
+    start=before_offset,
+    stop=after_offset,
+    title="Pre synaptic neuron voltage along time.",
+    xlabel="time (in s)",
+    ylabel="voltage (in V)",
+	is_voltage=true,
+	tofile=false
+)
+
 # ╔═╡ 6da82b8c-3bf0-4f98-9da4-dab982a1a741
 network.i_neuron_1.ampa_syn
 
@@ -264,17 +284,41 @@ scatter(sol[res])
 # ╔═╡ 18701403-6cff-49a4-a3c2-d37f8a80c09a
 parameters(network)
 
+# ╔═╡ e39f2ce2-8f02-4a01-8756-b23184c44378
+ma = reduce(hcat, sol[res])
+
+# ╔═╡ 72c8fab9-9bff-4c93-936b-70894bce5b3f
+zeros(eltype(ma), size(ma))
+
+# ╔═╡ d8cc69d5-bf70-479b-b6b6-7de1f02f1930
+function get_spikes_from_r(r_array)
+    # if dims == time, features
+	res_array = zeros(eltype(r_array), size(r_array))
+	for i in 1:size(res_array, 1)
+		for j in 2:size(res_array, 2)
+			res_array[i, j] = r_array[i, j - 1] < r_array[i, j] ? 1.0 : 0.0
+		end
+	end
+	res_array
+end
+
 # ╔═╡ 340fd247-1ef3-4f21-bb4e-95372cb9bc1a
-res
+rs = get_spikes_from_r(ma)
 
-# ╔═╡ 88923549-1fb1-4337-aaa7-885029ca2321
-# ╠═╡ disabled = true
-#=╠═╡
-params = Neuron.AdExNeuronParams()
-  ╠═╡ =#
+# ╔═╡ 9c4a47e8-c327-4bd2-a80e-0a8d898c5a6e
 
-# ╔═╡ bd02cf83-fb63-4a31-94fa-711c5701ac61
-params = Neuron.AdExNeuronParams()
+
+# ╔═╡ f815fc58-0bb4-40de-bf33-281cf155ed22
+transpose(ma)[end, 1]
+
+# ╔═╡ 5177d2c0-28e8-4de4-b6d7-5bdeab2d929a
+get_spikes_from_r(transpose(ma))
+
+# ╔═╡ a5f0bb8d-79cb-4b8b-9d47-32c76244771a
+get_spikes_from_r(ma) |> sum
+
+# ╔═╡ 453a2187-1c6d-4c5b-92bf-cc263622cf98
+sol[rs][t]
 
 # ╔═╡ Cell order:
 # ╠═e86eea66-ad59-11ef-2550-cf2588eae9d6
@@ -323,6 +367,7 @@ params = Neuron.AdExNeuronParams()
 # ╠═2b16d9c0-bfc2-4511-bbc6-4aa01c519cf5
 # ╠═afff9ea4-7bc3-4944-8654-f5da300ad2dc
 # ╠═ab42d5d1-679b-4b30-8bfd-91a4d8fafa15
+# ╠═a81c6385-0952-4005-8534-afd24f7a1a77
 # ╠═6da82b8c-3bf0-4f98-9da4-dab982a1a741
 # ╠═e398609c-25e1-491f-ae6d-4f7bc4e49ce9
 # ╠═6fc69b0a-fba0-4361-be42-bf9dd3338c15
@@ -337,4 +382,12 @@ params = Neuron.AdExNeuronParams()
 # ╠═206676ad-2e5a-4a64-bc8d-054d30c805d7
 # ╠═54323c9e-d5ef-409c-827e-5abaaf0c8e9e
 # ╠═18701403-6cff-49a4-a3c2-d37f8a80c09a
+# ╠═e39f2ce2-8f02-4a01-8756-b23184c44378
+# ╠═72c8fab9-9bff-4c93-936b-70894bce5b3f
+# ╠═d8cc69d5-bf70-479b-b6b6-7de1f02f1930
 # ╠═340fd247-1ef3-4f21-bb4e-95372cb9bc1a
+# ╠═9c4a47e8-c327-4bd2-a80e-0a8d898c5a6e
+# ╠═f815fc58-0bb4-40de-bf33-281cf155ed22
+# ╠═5177d2c0-28e8-4de4-b6d7-5bdeab2d929a
+# ╠═a5f0bb8d-79cb-4b8b-9d47-32c76244771a
+# ╠═453a2187-1c6d-4c5b-92bf-cc263622cf98

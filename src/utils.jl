@@ -55,10 +55,15 @@ function fetch_uparameters_from_symbol(model::ODESystem, sym_to_fetch::Symbol)::
     params = parameters(model) .|> replaced_parameter
 end
 
-function get_spikes_from_r(r_array::Matrix)
+function get_spikes_from_r(r_array)
     # if dims == time, features
-    get_spike_idx(r_vector::Vector{Float64})::Vector{Bool} = findall(i -> r_vector[i] != r_vector[i+1], 1:length(r_vector)-1)
-    get_spike_idx.(r_array)
+    res_array = zeros(eltype(r_array), size(r_array))
+    for i in 1:size(res_array, 1)
+        for j in 2:size(res_array, 2)
+            res_array[i, j] = r_array[i, j-1] < r_array[i, j] ? 1.0 : 0.0
+        end
+    end
+    res_array
 end
 
 function get_spike_timings(r_array::Matrix, sol)
