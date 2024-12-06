@@ -1,11 +1,12 @@
 module Neuron
-using ModelingToolkit, Parameters, StringDistances, Transducers, BangBang, StaticArrays
+using ModelingToolkit, Parameters, StringDistances, Transducers, BangBang, StaticArrays, Symbolics, DifferentialEquations, ComponentArrays
 using ModelingToolkit: t_nounits as t, D_nounits as D
+using PrecompileTools: @setup_workload, @compile_workload
 
 const start_input::Float64 = 200e-3
-const input_duration::Float64 = 200e-3
-step_fn(t, iv) = start_input < t < start_input + input_duration ? iv : 0
-@register_symbolic step_fn(t, iv)
+# const input_duration::Float64 = 200e-3
+step_fn(t, iv, duration) = ifelse(start_input < t < start_input + duration, iv, 0)
+@register_symbolic step_fn(t, iv, duration)
 
 @mtkmodel Soma begin # AdEx neuron from https://journals.physiology.org/doi/pdf/10.1152/jn.00686.2005
     @variables begin
@@ -27,11 +28,12 @@ step_fn(t, iv) = start_input < t < start_input + input_duration ? iv : 0
         b
         TauW
         input_value
+        duration
     end
     @equations begin
         D(v) ~ (-Je * (v - vrest) + Je * delta * exp((v - vthr) / delta) - w + Ii + Ie + Ib) / Cm # voltage dynamic
         D(w) ~ (-w + a * (v - vrest)) / TauW # adaptation dynamic
-        Ib ~ step_fn(t, input_value)
+        Ib ~ step_fn(t, input_value, duration)
         D(R) ~ 0
     end
 end
@@ -67,9 +69,46 @@ end
     end
 end
 
+function get_adex_neuron_params_skeleton(type::DataType)
+    ComponentVector{type}(
+        vrest = -65.0e-3,  # Resting membrane potential (V)
+        vthr = -50.0e-3,   # Spike threshold (V)
+        Je = 30.0e-9,       # Membrane time constant (Siemens S)
+        delta = 2.0e-3,    # Spike slope factor (V)
+        Cm = 281e-12,       # Membrane capacitance (Farad F)
+        TauW = 144.0e-3,    # Adaptation time constant (s)
+        a = 40.0e-9,        # Subthreshold adaptation (A)
+        gl = 20e-9,     # leak conductance
+        b = 0.08e-9,
+        input_value = 0,
+        gmax = 6.0e-9,
+        tau_ampa = 5.0e-3,
+        tau_GABAa_rise = 1e-3,
+        tau_GABAa_fast = 6e-3,
+        vtarget_exc = 0,
+        vtarget_inh = -75e-3,
+        vspike = 0,
+        inc_gsyn = 1e-9,
+        e_neuron_1__soma__input_value = 2e-9,
+        duration = 500e-3,
+    )
+end
+
+function get_adex_neuron_uparams_skeleton(type::DataType)
+    ComponentVector{type}(
+        v = -65.0e-3,
+        w = 0.0e-9,
+        Ie = 0,
+        Ii = 0,
+        Ib = 1e-9,
+        R = 0,
+        g_syn = 0
+    )
+end
+
 
 # Base neuron parameters
-Base.@kwdef struct AdExNeuronParams
+Base.@kwdef mutable struct AdExNeuronParams
     vrest::Float64 = -65.0e-3  # Resting membrane potential (V)
     vthr::Float64 = -50.0e-3   # Spike threshold (V)
     Je::Float64 = 30.0e-9       # Membrane time constant (Siemens S)
@@ -89,6 +128,7 @@ Base.@kwdef struct AdExNeuronParams
     vspike::Float64 = 0
     inc_gsyn::Float64 = 1e-9
     e_neuron_1__soma__input_value::Float64 = 2e-9
+    duration::Float64 = 500e-3
 end
 Base.@kwdef struct AdExNeuronUParams
     v::Float64 = -65.0e-3
@@ -134,8 +174,8 @@ function make_neuron(params, soma_model, tspan, name)::ODESystem
     neuron = ModelingToolkit.compose(
         ODESystem(
             [
-                soma.Ie ~ ampa_syn.g_syn * (soma.v - ampa_syn.vtarget_exc)
-                soma.Ii ~ gabaa_syn.g_syn * (soma.v - gabaa_syn.vtarget_inh)
+                soma.Ie ~ ampa_syn.g_syn * -(soma.v - ampa_syn.vtarget_exc)
+                soma.Ii ~ gabaa_syn.g_syn * -(soma.v - gabaa_syn.vtarget_inh)
             ], t; name=name
         ), soma, ampa_syn, gabaa_syn
     )
@@ -192,7 +232,7 @@ function init_connection_map(e_neurons::Vector{ODESystem}, i_neurons::Vector{ODE
 end
 
 function make_network(neurons::Vector{ODESystem}, connections::Vector{Pair{Vector{Equation},Vector{Equation}}})::ODESystem
-    @mtkbuild network = ModelingToolkit.compose(ODESystem([], t; continuous_events=connections, name=:connected_neurons), neurons)
+    @mtkbuild network = ModelingToolkit.compose(ODESystem([], t; continuous_events=connections, name=:connected_neurons), neurons) split=false
 end
 
 get_varsym_from_syskey(param::SymbolicUtils.BasicSymbolic)::Symbol = split(param |> Symbol |> String, "₊") |> last |> Symbol
@@ -207,8 +247,6 @@ function match_param(to_match, to_find, match_nums::Bool)::Bool
         matched_param = match(r"\D*(\d+)", to_match)
         to_find_replaced = isnothing(matched_param) ? to_find : replace(to_find, r"(\d+)" => matched_param.captures[1])
 
-        @show to_find_replaced
-        @show to_match
         to_match == to_find_replaced
     end
 end
@@ -230,26 +268,24 @@ function find_param(param_to_find, params, match_nums::Bool)
     match_mask = process_vecs.(Ref(param_to_find_vec), params_vecs, match_nums)
     match_idx = findall(match_mask)
     matched_properties = propertynames(params)[match_idx]
-    @show matched_properties
     length(matched_properties) == 1 ? matched_properties |> first : fallback
 end
 
-function instantiate_param(parameter::SymbolicUtils.BasicSymbolic, params::AdExNeuronParams, match_nums::Bool)::Union{Pair{SymbolicUtils.BasicSymbolic,Union{Float64,Int64}},Nothing}
+function instantiate_param(parameter::SymbolicUtils.BasicSymbolic, params, match_nums::Bool)::Union{Pair{SymbolicUtils.BasicSymbolic,Union{Float64,Int64}},Nothing}
     best_match(param) = find_param(param, params, match_nums)
     if hasproperty(params, get_varsym_from_syskey(parameter))
-        res = parameter => getproperty(params, parameter |> Symbol |> best_match |> Symbol)
+        parameter => getproperty(params, parameter |> Symbol |> best_match |> Symbol)
     end
-    @show res
 end
 
-function instantiate_uparam(parameter::SymbolicUtils.BasicSymbolic, uparams::AdExNeuronUParams)::Union{Pair{SymbolicUtils.BasicSymbolic,Union{Float64,Int64}},Nothing}
+function instantiate_uparam(parameter::SymbolicUtils.BasicSymbolic, uparams)::Union{Pair{SymbolicUtils.BasicSymbolic,Union{Float64,Int64}},Nothing}
     replaced_parameter = split(parameter |> Symbol |> String, "(")[1]
     if hasproperty(uparams, get_varsym_from_syskey(replaced_parameter))
         parameter => getproperty(uparams, get_varsym_from_syskey(replaced_parameter))
     end
 end
 
-function map_params(network::ODESystem, params::AdExNeuronParams, uparams::AdExNeuronUParams; match_nums::Bool=true)::Tuple{Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}},Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}}}
+function map_params(network::ODESystem, params, uparams; match_nums::Bool=true)::Tuple{Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}},Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}}}
     parameters_to_replace = parameters(network)
     uparameters_to_replace = unknowns(network)
 
@@ -259,4 +295,38 @@ function map_params(network::ODESystem, params::AdExNeuronParams, uparams::AdExN
     (map_params, map_uparams)
 end
 
+@setup_workload begin
+    stclist = [AdExNeuronParams(), AdExNeuronUParams()]
+    @compile_workload begin
+        i_neurons_n = 2
+        e_neurons_n = 2
+        i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)")) for i in 1:i_neurons_n]
+        e_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("e_neuron_$(i)")) for i in 1:e_neurons_n]
+
+        ee_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.excitator, Neuron.AMPA(), 1.0)
+        ei_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.inhibitor, Neuron.AMPA(), 1.0)
+        ie_rule = Neuron.ConnectionRule(Neuron.inhibitor, Neuron.excitator, Neuron.GABAa(), 1.0)
+
+        (id_map, map_connect) = Neuron.init_connection_map(e_neurons, i_neurons, vcat(ee_rule, ei_rule, ie_rule))
+        connections = Neuron.instantiate_connections(id_map, map_connect, vcat(e_neurons, i_neurons))
+
+        network = Neuron.make_network(vcat(e_neurons, i_neurons), connections)
+
+        simplified_model = network
+
+        iparams, iuparams = Neuron.map_params(simplified_model, params, uparams; match_nums=false)
+
+        prob = ODEProblem(simplified_model, iuparams, tspan, iparams)
+
+        solve(prob, Vern6(); abstol=1e-6, reltol=1e-6)
+    end
+end
+function make_gpu_compatible(prob::T, ::Val{T1}) where {T <: ODEProblem, T1}
+    sys = modelingtoolkitize(prob)
+    prob = ODEProblem{false}(sys)
+    remake(prob; u0 = SArray{Tuple{length(prob.u0)}, T1}(prob.u0),
+           tspan = T1.(prob.tspan),
+           p = prob.p isa SciMLBase.NullParameters ? prob.p :
+               SArray{Tuple{length(prob.p)}, T1}(prob.p))
+end
 end

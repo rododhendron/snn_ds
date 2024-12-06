@@ -66,9 +66,17 @@ function get_spikes_from_r(r_array)
     res_array
 end
 
-function get_spike_timings(r_array::Matrix, sol)
-    spikes_times = r_array |> get_spikes_from_r .|> s -> sol[s][t]
+function get_spike_timings(r_spikes::BitVector, sol)
+   sol.t[r_spikes]
 end
 
+function get_spike_timings(r_array::Matrix, sol)
+   r_spikes = get_spikes_from_r(r_array) .|> Bool
+   timings_vec = []
+   for i in 1:size(r_array, 1)
+       push!(timings_vec, get_spike_timings(r_spikes[i, :], sol))
+   end
+	timings_vec
+end
 
 end
