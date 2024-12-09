@@ -1,6 +1,6 @@
 module Neuron
 using ModelingToolkit, Parameters, StringDistances, Transducers, BangBang, StaticArrays, Symbolics, DifferentialEquations, ComponentArrays
-using ModelingToolkit: t_nounits as t, D_nounits as D
+using ModelingToolkit: t_nounits as t, D_nounits as D, Model
 using PrecompileTools: @setup_workload, @compile_workload
 
 const start_input::Float64 = 200e-3
@@ -71,82 +71,40 @@ end
 
 function get_adex_neuron_params_skeleton(type::DataType)
     ComponentVector{type}(
-        vrest = -65.0e-3,  # Resting membrane potential (V)
-        vthr = -50.0e-3,   # Spike threshold (V)
-        Je = 30.0e-9,       # Membrane time constant (Siemens S)
-        delta = 2.0e-3,    # Spike slope factor (V)
-        Cm = 281e-12,       # Membrane capacitance (Farad F)
-        TauW = 144.0e-3,    # Adaptation time constant (s)
-        a = 40.0e-9,        # Subthreshold adaptation (A)
-        gl = 20e-9,     # leak conductance
-        b = 0.08e-9,
-        input_value = 0,
-        gmax = 6.0e-9,
-        tau_ampa = 5.0e-3,
-        tau_GABAa_rise = 1e-3,
-        tau_GABAa_fast = 6e-3,
-        vtarget_exc = 0,
-        vtarget_inh = -75e-3,
-        vspike = 0,
-        inc_gsyn = 1e-9,
-        e_neuron_1__soma__input_value = 2e-9,
-        duration = 500e-3,
+        vrest=-65.0e-3,  # Resting membrane potential (V)
+        vthr=-50.0e-3,   # Spike threshold (V)
+        Je=30.0e-9,       # Membrane time constant (Siemens S)
+        delta=2.0e-3,    # Spike slope factor (V)
+        Cm=281e-12,       # Membrane capacitance (Farad F)
+        TauW=144.0e-3,    # Adaptation time constant (s)
+        a=40.0e-9,        # Subthreshold adaptation (A)
+        gl=20e-9,     # leak conductance
+        b=0.16e-9,
+        input_value=0,
+        gmax=6.0e-9,
+        tau_ampa=10.0e-3,
+        tau_GABAa_rise=1e-3,
+        tau_GABAa_fast=6e-3,
+        vtarget_exc=0,
+        vtarget_inh=-75e-3,
+        vspike=0,
+        inc_gsyn=1e-9,
+        i_neuron_1__soma__inc_gsyn=0.52e-9,
+        e_neuron_1__soma__input_value=0.52e-9,
+        duration=400e-3,
     )
 end
 
 function get_adex_neuron_uparams_skeleton(type::DataType)
     ComponentVector{type}(
-        v = -65.0e-3,
-        w = 0.0e-9,
-        Ie = 0,
-        Ii = 0,
-        Ib = 1e-9,
-        R = 0,
-        g_syn = 0
+        v=-65.0e-3,
+        w=0.0e-9,
+        Ie=0,
+        Ii=0,
+        Ib=0e-9,
+        R=0,
+        g_syn=0
     )
-end
-
-
-# Base neuron parameters
-Base.@kwdef mutable struct AdExNeuronParams
-    vrest::Float64 = -65.0e-3  # Resting membrane potential (V)
-    vthr::Float64 = -50.0e-3   # Spike threshold (V)
-    Je::Float64 = 30.0e-9       # Membrane time constant (Siemens S)
-    delta::Float64 = 2.0e-3    # Spike slope factor (V)
-    Cm::Float64 = 281e-12       # Membrane capacitance (Farad F)
-    TauW::Float64 = 144.0e-3    # Adaptation time constant (s)
-    a::Float64 = 40.0e-9        # Subthreshold adaptation (A)
-    gl::Float64 = 20e-9     # leak conductance
-    b::Float64 = 0.08e-9
-    input_value::Float64 = 0
-    gmax::Float64 = 6.0e-9
-    tau_ampa::Float64 = 5.0e-3
-    tau_GABAa_rise::Float64 = 1e-3
-    tau_GABAa_fast::Float64 = 6e-3
-    vtarget_exc::Float64 = 0
-    vtarget_inh::Float64 = -75e-3
-    vspike::Float64 = 0
-    inc_gsyn::Float64 = 1e-9
-    e_neuron_1__soma__input_value::Float64 = 2e-9
-    duration::Float64 = 500e-3
-end
-Base.@kwdef struct AdExNeuronUParams
-    v::Float64 = -65.0e-3
-    w::Float64 = 0.0e-9
-    Ie::Float64 = 0
-    Ii::Float64 = 0
-    Ib::Float64 = 1e-9
-    R::Int64 = 0
-    g_syn::Float64 = 0
-end
-
-struct Params{S}
-    gl::Float64
-    a::Float64
-    vrest::Float64
-    delta::Float64
-    vthr::Float64
-    TauW::Float64
 end
 
 abstract type SynapseType end
@@ -166,7 +124,7 @@ function get_synapse_eq(_synapse_type::Nothing, post_neuron::ODESystem)::Nothing
     nothing
 end
 
-function make_neuron(params, soma_model, tspan, name)::ODESystem
+function make_neuron(params::ComponentArray, soma_model::Model, tspan::Tuple{Int,Int}, name::Symbol)::ODESystem
     @named soma = soma_model(; name=Symbol("soma"))
     @named ampa_syn = SynapseAMPA(; name=Symbol("ampa_syn"))
     @named gabaa_syn = SynapseGABAa(; name=Symbol("gabaa_syn"))
@@ -232,7 +190,7 @@ function init_connection_map(e_neurons::Vector{ODESystem}, i_neurons::Vector{ODE
 end
 
 function make_network(neurons::Vector{ODESystem}, connections::Vector{Pair{Vector{Equation},Vector{Equation}}})::ODESystem
-    @mtkbuild network = ModelingToolkit.compose(ODESystem([], t; continuous_events=connections, name=:connected_neurons), neurons) split=false
+    ModelingToolkit.compose(ODESystem([], t; continuous_events=connections, name=:connected_neurons), neurons)
 end
 
 get_varsym_from_syskey(param::SymbolicUtils.BasicSymbolic)::Symbol = split(param |> Symbol |> String, "₊") |> last |> Symbol
@@ -285,7 +243,7 @@ function instantiate_uparam(parameter::SymbolicUtils.BasicSymbolic, uparams)::Un
     end
 end
 
-function map_params(network::ODESystem, params, uparams; match_nums::Bool=true)::Tuple{Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}},Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}}}
+function map_params(network::ODESystem, params::ComponentArray, uparams::ComponentArray; match_nums::Bool=true)::Tuple{Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}},Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}}}
     parameters_to_replace = parameters(network)
     uparameters_to_replace = unknowns(network)
 
@@ -320,13 +278,5 @@ end
 
         solve(prob, Vern6(); abstol=1e-6, reltol=1e-6)
     end
-end
-function make_gpu_compatible(prob::T, ::Val{T1}) where {T <: ODEProblem, T1}
-    sys = modelingtoolkitize(prob)
-    prob = ODEProblem{false}(sys)
-    remake(prob; u0 = SArray{Tuple{length(prob.u0)}, T1}(prob.u0),
-           tspan = T1.(prob.tspan),
-           p = prob.p isa SciMLBase.NullParameters ? prob.p :
-               SArray{Tuple{length(prob.p)}, T1}(prob.p))
 end
 end

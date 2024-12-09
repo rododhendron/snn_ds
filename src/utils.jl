@@ -1,6 +1,8 @@
 module Utils
 using ModelingToolkit, DifferentialEquations, Symbolics, Transducers
 
+export ParamTree, fetch_tree, get_spike_timings, get_spikes_from_r
+
 mutable struct ParamNode
     nodes::Vector{Union{ParamNode,Num}}
     system::ODESystem
@@ -22,27 +24,35 @@ function instantiate_systems(model::Num)
     model
 end
 
-function fetch_node(path, node::Num)
+function fetch_node(path, node::Num, isin::Bool)
     split_sym = "₊"
     node_string = node |> Symbol |> String |> x -> split(x, split_sym) |> last |> x -> split(x, "(") |> first
-    if occursin(path[1], node_string)
+    if !isin && path[1] == node_string
+        node
+    elseif isin && occursin(path[1], node_string)
         node
     else
         nothing
     end
 end
 
-function fetch_node(path, node::ParamNode)
-    matched_nodes = filter(node -> typeof(node) == ParamNode && occursin(path[1], node.system.name |> String), node.nodes)
+function take_current_node_name(name::Symbol)::String
+    split_sym = "₊"
+    split(String(name), split_sym) |> first
+end
+
+function fetch_node(path, node::ParamNode, isin::Bool)
+    match_fn(x) = isin ? occursin(path[1], x.system.name |> String) : path[1] == x.system.name |> take_current_node_name
+    matched_nodes = filter(node -> typeof(node) == ParamNode && match_fn(node), node.nodes)
     if !isempty(matched_nodes)
-        fetch_node.(Ref(path), matched_nodes)
+        fetch_node.(Ref(path), matched_nodes, isin)
     else
-        fetch_node.(Ref(path[2:end]), node.nodes)
+        fetch_node.(Ref(path[2:end]), node.nodes, isin)
     end
 end
 
-function fetch_tree(path::Vector{String}, tree::ParamTree)
-    fetch_node(path, tree.master_node) |> Cat() |> Cat() |> Filter(!isnothing) |> collect
+function fetch_tree(path::Vector{String}, tree::ParamTree, isin::Bool=true)
+    fetch_node(path, tree.master_node, isin) |> Cat() |> Cat() |> Filter(!isnothing) |> collect
 end
 
 function make_param_tree(model::ODESystem)::ParamTree
@@ -67,16 +77,18 @@ function get_spikes_from_r(r_array)
 end
 
 function get_spike_timings(r_spikes::BitVector, sol)
-   sol.t[r_spikes]
+    sol.t[r_spikes]
 end
 
 function get_spike_timings(r_array::Matrix, sol)
-   r_spikes = get_spikes_from_r(r_array) .|> Bool
-   timings_vec = []
-   for i in 1:size(r_array, 1)
-       push!(timings_vec, get_spike_timings(r_spikes[i, :], sol))
-   end
-	timings_vec
+    r_spikes = get_spikes_from_r(r_array) .|> Bool
+    timings_vec = []
+    for i in 1:size(r_array, 1)
+        push!(timings_vec, get_spike_timings(r_spikes[i, :], sol))
+    end
+    timings_vec
 end
+
+
 
 end

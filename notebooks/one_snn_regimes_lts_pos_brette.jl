@@ -18,14 +18,14 @@ end
 
 # ╔═╡ a70f6a56-8f9e-11ef-1a9b-8f0ab1c40c05
 begin
-	using Symbolics, DifferentialEquations, SciMLBase, Statistics
-	using ModelingToolkit
-	using ModelingToolkit: t_nounits as t, D_nounits as D, inputs
-	using LabelledArrays
-	using CairoMakie, Latexify
-	using SignalAnalysis
-	using Distributions
-	using PlutoUI
+    using Symbolics, DifferentialEquations, SciMLBase, Statistics
+    using ModelingToolkit
+    using ModelingToolkit: t_nounits as t, D_nounits as D, inputs
+    using LabelledArrays
+    using CairoMakie, Latexify
+    using SignalAnalysis
+    using Distributions
+    using PlutoUI
 end
 
 # ╔═╡ 5a59b9f8-b8c4-477a-b5e4-f1c2c59e68eb
@@ -49,38 +49,38 @@ md"# parameters"
 
 # ╔═╡ 91cccba8-acec-4d35-9018-8dcbd2165a2e
 begin
-	const analysis_path::String = "analysis/"
-	const offset::Float64 = 100e-3
-	# pos
-	# const input_value::Float64 = 0.8e-9
-	# neg
-	# const input_value::Float64 = -2e-9
+    const analysis_path::String = "analysis/"
+    const offset::Float64 = 100e-3
+    # pos
+    # const input_value::Float64 = 0.8e-9
+    # neg
+    # const input_value::Float64 = -2e-9
 
-	const tstart::Float64 = 0.0
-	const tstop::Float64 = 10000.0e-3
-	const tspan = (tstart, tstop)
+    const tstart::Float64 = 0.0
+    const tstop::Float64 = 10000.0e-3
+    const tspan = (tstart, tstop)
 
-	# model params
-	iparams = SLVector((
-		Je=30e-9,
-		delta = 2e-3,
-		vthr=-50.4e-3,
-		Cm=281e-12,
-		vrest=-70.6e-3,
-		TauW=144e-3,
-		w0=0,
-		a=40e-9,
-		input_potential=0,
-		b=0.0805e-9,
-		input_value=2e-9
-	))
-	uparams = SLVector((
-		v=iparams.vrest,
-		w=iparams.w0
-	))
+    # model params
+    iparams = SLVector((
+        Je=30e-9,
+        delta=2e-3,
+        vthr=-50.4e-3,
+        Cm=281e-12,
+        vrest=-70.6e-3,
+        TauW=144e-3,
+        w0=0,
+        a=40e-9,
+        input_potential=0,
+        b=0.0805e-9,
+        input_value=2e-9
+    ))
+    uparams = SLVector((
+        v=iparams.vrest,
+        w=iparams.w0
+    ))
 
-	# input params
-	n_spikes = 3
+    # input params
+    n_spikes = 3
 end
 
 # ╔═╡ 21280991-401a-403a-b47a-05344f612156
@@ -94,56 +94,56 @@ md"# misc functions"
 
 # ╔═╡ ded7e41b-277d-4b4a-9018-28a6925a3b06
 begin
-function get_slice_xy(x, y; start=0, stop=0)
-    stop = stop == 0 ? maximum(a) : stop
-    first_x_idx = findfirst(el -> el >= start, x)
-    last_x_idx = findlast(el -> el <= stop, x)
-    (x[first_x_idx:last_x_idx], y[first_x_idx:last_x_idx])
-end
+    function get_slice_xy(x, y; start=0, stop=0)
+        stop = stop == 0 ? maximum(x) : stop
+        first_x_idx = findfirst(el -> el >= start, x)
+        last_x_idx = findlast(el -> el <= stop, x)
+        (x[first_x_idx:last_x_idx], y[first_x_idx:last_x_idx])
+    end
 
-function make_fig(;xlabel="", ylabel="", title="")
-    f = Figure(size=(1600, 700))
-    ax1 = Axis(f[1, 1],
-        title=title,
-        xlabel=xlabel,
-        ylabel=ylabel
-    )
-	ax2 = Axis(f[1, 1],
-		yaxisposition = :right,
-		ylabel="input_current, in A"
-	)
-	linkxaxes!(ax1, ax2)
-	# hidespines!(ax2)
-	# hidedecorations!(ax2)
-    (f, ax1, ax2)
-end
+    function make_fig(; xlabel="", ylabel="", title="")
+        f = Figure(size=(1600, 700))
+        ax1 = Axis(f[1, 1],
+            title=title,
+            xlabel=xlabel,
+            ylabel=ylabel
+        )
+        ax2 = Axis(f[1, 1],
+            yaxisposition=:right,
+            ylabel="input_current, in A"
+        )
+        linkxaxes!(ax1, ax2)
+        # hidespines!(ax2)
+        # hidedecorations!(ax2)
+        (f, ax1, ax2)
+    end
 
-function plot_neuron_value(time, value, p, input_current; start=0, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false)
-    f, ax, ax2 = make_fig(;xlabel=xlabel, ylabel=ylabel, title=title)
-    sliced_time, sliced_value = get_slice_xy(time, value, start=start, stop=stop)
-    sliced_time, sliced_current = get_slice_xy(time, input_current, start=start, stop=stop)
-    is_voltage ? hlines!(ax, [p.vthr, p.vrest]; color=1:2) : nothing
-    vlines!(ax, [offset]; color=:grey, linestyle=:dashdot)
-	lines!(ax2, sliced_time, sliced_current, color=(:black, 0.7))
-    lines!(ax, sliced_time, sliced_value)
-	xlims!(ax, (start, stop))
-    tofile ? save(name, f) : f
-end
+    function plot_neuron_value(time, value, p, input_current; start=0, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false)
+        f, ax, ax2 = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title)
+        sliced_time, sliced_value = get_slice_xy(time, value, start=start, stop=stop)
+        sliced_time, sliced_current = get_slice_xy(time, input_current, start=start, stop=stop)
+        is_voltage ? hlines!(ax, [p.vthr, p.vrest]; color=1:2) : nothing
+        vlines!(ax, [offset]; color=:grey, linestyle=:dashdot)
+        lines!(ax2, sliced_time, sliced_current, color=(:black, 0.7))
+        lines!(ax, sliced_time, sliced_value)
+        xlims!(ax, (start, stop))
+        tofile ? save(name, f) : f
+    end
 
-function plot_spikes(spikes; start=0, stop=0, xlabel="", ylabel="", title="", name="")
-	f, ax, ax2 = make_fig(;xlabel=xlabel, ylabel=ylabel, title=title)
-	spikes_in_window = [spike for spike in spikes if spike != 0 && start < spike < stop]
-    vlines!(ax, spikes_in_window; color=:black, linewidth=1)
-	vlines!(ax, [start, stop]; color=:white)
-	xlims!(ax, (start, stop))
-	f
-end
+    function plot_spikes(spikes; start=0, stop=0, xlabel="", ylabel="", title="", name="")
+        f, ax, ax2 = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title)
+        spikes_in_window = [spike for spike in spikes if spike != 0 && start < spike < stop]
+        vlines!(ax, spikes_in_window; color=:black, linewidth=1)
+        vlines!(ax, [start, stop]; color=:white)
+        xlims!(ax, (start, stop))
+        f
+    end
 
-function get_spikes_from_voltage(t, v, v_target)
-    tol = 1e-3
-    spike_idx = findall(x -> v_target - tol < x < v_target + tol, v)
-    return (t[spike_idx], v[spike_idx])
-end
+    function get_spikes_from_voltage(t, v, v_target)
+        tol = 1e-3
+        spike_idx = findall(x -> v_target - tol < x < v_target + tol, v)
+        return (t[spike_idx], v[spike_idx])
+    end
 end
 
 # ╔═╡ 7c00ffc0-b055-4fe6-81eb-0943e6aae695
@@ -151,12 +151,12 @@ md"# input fn"
 
 # ╔═╡ 4674a6c2-d0b0-4ba4-be67-80792727d984
 begin
-	start_input = offset
-	# input_duration = 400e-3
-	input_duration = 500e-3
-	# input_value = 0.1e-9
-	step_fn(t, iv) = start_input < t < start_input + input_duration ? iv : 0
-	@register_symbolic step_fn(t, iv)
+    start_input = offset
+    # input_duration = 400e-3
+    input_duration = 500e-3
+    # input_value = 0.1e-9
+    step_fn(t, iv) = start_input < t < start_input + input_duration ? iv : 0
+    @register_symbolic step_fn(t, iv)
 end
 
 # ╔═╡ 0e2ea459-5f1f-49b7-adb6-63dea6e6e8cd
@@ -170,27 +170,27 @@ md"# model equations"
 
 # ╔═╡ 5de56251-6600-4a2b-9f83-65217ac5eca7
 begin
-	# Create expression for @parameters macro
+    # Create expression for @parameters macro
     expr = Expr(:macrocall, Symbol("@parameters"))
     push!(expr.args, nothing)  # Required for macro calls
-    
+
     # Add each parameter with its default value
     for name in symbols(iparams)
         push!(expr.args, :($name))
     end
-	try
-		Core.eval(@__MODULE__, expr)
-	catch e
-		println("already evaluated")
-	end
-	# @parameters(p = symbols(params...))
-	@variables v(t) = iparams.vrest w(t) = iparams.w0 I(t) [input = true] R(t) = 0 [output = true]
-	eqs = [
-    	D(v) ~ (- Je * (v - vrest) + Je * delta * exp((v - vthr) / delta) - w + I)/ Cm
-    	D(w) ~ (-w + a * (v - vrest)) / TauW
-		I ~ step_fn(t, input_value)
-		D(R) ~ 0
-	]
+    try
+        Core.eval(@__MODULE__, expr)
+    catch e
+        println("already evaluated")
+    end
+    # @parameters(p = symbols(params...))
+    @variables v(t) = iparams.vrest w(t) = iparams.w0 I(t) [input = true] R(t) = 0 [output = true]
+    eqs = [
+        D(v) ~ (-Je * (v - vrest) + Je * delta * exp((v - vthr) / delta) - w + I) / Cm
+        D(w) ~ (-w + a * (v - vrest)) / TauW
+        I ~ step_fn(t, input_value)
+        D(R) ~ 0
+    ]
 end
 
 # ╔═╡ d0658c20-b9c4-4928-9b70-32073474e7ed
@@ -201,52 +201,52 @@ md"# events definition"
 
 # ╔═╡ f5746bcc-5f28-4494-be5c-4f1f3188a260
 begin
-	# experiment definition
-	@bind experiment Select([
-		"bursts",
-		"lts_neg",
-		"lts_pos",
-		"re_neg",
-		"re_pos",
-		"tc_neg",
-		"tc_pos",
-		"rs_small",
-		"fs_pos",
-		"rs_pos"
-	])
+    # experiment definition
+    @bind experiment Select([
+        "bursts",
+        "lts_neg",
+        "lts_pos",
+        "re_neg",
+        "re_pos",
+        "tc_neg",
+        "tc_pos",
+        "rs_small",
+        "fs_pos",
+        "rs_pos"
+    ])
 end
 
 # ╔═╡ d6116caf-1e6e-4611-b981-793a3354ab59
 begin
-	# overrides
-	spikes = []
-	
-	spike_affect_event = [v ~ iparams.vrest, w ~ w + iparams.b * 1, R ~ R + 1]
-	if experiment == "bursts"
-		params = SLVector(iparams; a=4e-9, b=0.0805e-9, input_value=0.8e-9)
-		spike_affect_event = [v ~ iparams.vthr + 3e-3, w ~ w + params.b * 1, R ~ R + 1]
-	elseif experiment == "lts_neg"
-		params = SLVector(iparams; input_value=-2e-9, b=0, a=20e-9)
-	elseif experiment == "lts_pos"
-		params = SLVector(iparams; input_value=2e-9, b=0, a=20e-9)
-	elseif experiment == "re_pos"
-		params = SLVector(iparams; input_value=2e-9, a=80e-9, b=0)
-	elseif experiment == "re_neg"
-		params = SLVector(iparams; input_value=-2e-9, a=80e-9, b=0)
-	elseif experiment == "tc_pos"
-		params = SLVector(iparams; input_value=2e-9, a=50e-9, b=0)
-	elseif experiment == "tc_neg"
-		params = SLVector(iparams; input_value=-2e-9, a=50e-9, b=0)
-	elseif experiment == "rs_small"
-		params = SLVector(iparams; a=4e-9, b=0.0805e-9)
-		spike_affect_event = [v ~ iparams.vrest, w ~ w + params.b * 1, R ~ R + 1]
-	elseif experiment == "fs_pos"
-		params = SLVector(iparams; a=4e-9, b=0)
-		spike_affect_event = [v ~ iparams.vrest, w ~ w + params.b * 1, R ~ R + 1]
-	elseif experiment == "rs_pos"
-		params = SLVector(iparams; a=4e-9, b=0.4e-9)
-		spike_affect_event = [v ~ iparams.vrest, w ~ w + params.b * 1, R ~ R + 1]
-	end
+    # overrides
+    spikes = []
+
+    spike_affect_event = [v ~ iparams.vrest, w ~ w + iparams.b * 1, R ~ R + 1]
+    if experiment == "bursts"
+        params = SLVector(iparams; a=4e-9, b=0.0805e-9, input_value=0.8e-9)
+        spike_affect_event = [v ~ iparams.vthr + 3e-3, w ~ w + params.b * 1, R ~ R + 1]
+    elseif experiment == "lts_neg"
+        params = SLVector(iparams; input_value=-2e-9, b=0, a=20e-9)
+    elseif experiment == "lts_pos"
+        params = SLVector(iparams; input_value=2e-9, b=0, a=20e-9)
+    elseif experiment == "re_pos"
+        params = SLVector(iparams; input_value=2e-9, a=80e-9, b=0)
+    elseif experiment == "re_neg"
+        params = SLVector(iparams; input_value=-2e-9, a=80e-9, b=0)
+    elseif experiment == "tc_pos"
+        params = SLVector(iparams; input_value=2e-9, a=50e-9, b=0)
+    elseif experiment == "tc_neg"
+        params = SLVector(iparams; input_value=-2e-9, a=50e-9, b=0)
+    elseif experiment == "rs_small"
+        params = SLVector(iparams; a=4e-9, b=0.0805e-9)
+        spike_affect_event = [v ~ iparams.vrest, w ~ w + params.b * 1, R ~ R + 1]
+    elseif experiment == "fs_pos"
+        params = SLVector(iparams; a=4e-9, b=0)
+        spike_affect_event = [v ~ iparams.vrest, w ~ w + params.b * 1, R ~ R + 1]
+    elseif experiment == "rs_pos"
+        params = SLVector(iparams; a=4e-9, b=0.4e-9)
+        spike_affect_event = [v ~ iparams.vrest, w ~ w + params.b * 1, R ~ R + 1]
+    end
 end
 
 # ╔═╡ 0558d08b-96b4-4fa5-b3c0-07677fbef4b5
@@ -254,14 +254,14 @@ typeof(params)
 
 # ╔═╡ fcd1036a-7808-474d-8606-fc7671c43b04
 begin
-	spike_condition(u, t, integrator) = u[1] > -50e-3
-	triggered_spikes = []
-	function spike_affect!(integrator)
-		integrator.u[1] = -65e-3
-		integrator.u[2] = integrator.u[2] + b * 1
-		push!(triggered_spikes, integrator.t)
-	end
-	spike_cb = ContinuousCallback(spike_condition, spike_affect!)
+    spike_condition(u, t, integrator) = u[1] > -50e-3
+    triggered_spikes = []
+    function spike_affect!(integrator)
+        integrator.u[1] = -65e-3
+        integrator.u[2] = integrator.u[2] + b * 1
+        push!(triggered_spikes, integrator.t)
+    end
+    spike_cb = ContinuousCallback(spike_condition, spike_affect!)
 end
 
 # ╔═╡ 19664e67-adba-4641-a606-f39a4b6e57c0
@@ -269,9 +269,9 @@ md"# model construction"
 
 # ╔═╡ 2cf38f72-d740-4d38-af10-35eef9288cfb
 begin
-@named neuron = ODESystem(eqs, t; tspan=tspan, continuous_events=[v ~ params.vthr + 50e-3] => spike_affect_event)
+    @named neuron = ODESystem(eqs, t; tspan=tspan, continuous_events=[v ~ params.vthr + 50e-3] => spike_affect_event)
 
-simplified_model = structural_simplify(neuron)
+    simplified_model = structural_simplify(neuron)
 end
 
 # ╔═╡ f49fa6f5-8754-470b-9d36-5abdf89ac18a
@@ -288,8 +288,8 @@ md"# problem construction"
 
 # ╔═╡ 5440e185-08f0-4f69-a503-67d2fc34e02d
 begin
-prob = ODEProblem(simplified_model, pairs(convert(NamedTuple, uparams)), tspan, pairs(convert(NamedTuple, params)))
-sol = solve(prob, Vern6(); abstol=1e-7, reltol=1e-7)
+    prob = ODEProblem(simplified_model, pairs(convert(NamedTuple, uparams)), tspan, pairs(convert(NamedTuple, params)))
+    sol = solve(prob, Vern6(); abstol=1e-7, reltol=1e-7)
 end
 
 # ╔═╡ bb697c44-2d93-4452-9ae2-af66674f73ca
@@ -306,8 +306,8 @@ md"cursor definition for plot"
 
 # ╔═╡ 04a06203-f446-46e2-86d6-3c593f0c67c4
 begin
-before_offset = offset - 200e-3
-after_offset = offset + 1000e-3
+    before_offset = offset - 200e-3
+    after_offset = offset + 1000e-3
 end
 
 # ╔═╡ 8c4de4f6-20fa-4b27-b438-f69f841c135c
@@ -320,15 +320,15 @@ triggered_spikes
 md"# plots"
 
 # ╔═╡ ed0755af-52d5-487f-974d-4100e2573429
-plot_neuron_value(sol.t, sol[v], params ,sol[I];
+plot_neuron_value(sol.t, sol[v], params, sol[I];
     start=before_offset,
     stop=after_offset,
     title="Neuron voltage along time.",
     xlabel="time (in s)",
     ylabel="voltage (in V)",
     name=analysis_path * "neuron_vt.png",
-	is_voltage=true,
-	tofile=false
+    is_voltage=true,
+    tofile=false
 )
 
 # ╔═╡ 95bd7b02-3fa5-4a34-9f09-28f3b21b56c0
@@ -339,7 +339,7 @@ plot_neuron_value(sol.t, sol[w], params, sol[I];
     xlabel="time (in s)",
     ylabel="adaptation",
     name=analysis_path * "neuron_wt.png",
-	tofile=false
+    tofile=false
 )
 
 # ╔═╡ 4b7a14f0-e129-47ca-96de-dfdc2d062ec5
@@ -359,7 +359,7 @@ spikes_times = sol[indices][t]
 
 # ╔═╡ 2ae03bea-b1cf-47da-92ea-af7f0f4578bf
 plot_spikes(spikes_times;
-	start=before_offset,
+    start=before_offset,
     stop=after_offset,
     title="Spikes triggered along time.",
     xlabel="time (in ms)",
