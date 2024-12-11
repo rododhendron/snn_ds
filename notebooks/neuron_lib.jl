@@ -95,7 +95,7 @@ function plot_spikes(spikes; start=0, stop=0, xlabel="", ylabel="", title="", na
 	y = spikes_y |> filter(!isempty)
 	@show size(x)
 	for i in 1:size(x, 1)
-    	scatter!(ax, x[i], y[i]; color=color, markersize=2)
+    	scatter!(ax, x[i], y[i]; color=color, markersize=8)
 	end
     f
 end
@@ -110,74 +110,12 @@ end
 # ╔═╡ 905483e2-78b9-40ed-8421-cd1b406003d9
 begin
 	tspan = (0, 1)
-	ni_neurons = 5
-	ne_neurons = 40
+	ni_neurons = 1
+	ne_neurons = 1
 end
 
 # ╔═╡ 88923549-1fb1-4337-aaa7-885029ca2321
-# ╠═╡ disabled = true
-#=╠═╡
-params = Neuron.AdExNeuronParams()
-  ╠═╡ =#
-
-# ╔═╡ 32e92fca-36d3-4ebd-a228-fd6b3f965694
-
-
-# ╔═╡ fa06378c-7089-419a-9c4f-65d48263155e
-ee_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.excitator, Neuron.AMPA(), 0.2)
-
-# ╔═╡ d9c156aa-f201-40f7-9be1-16f01c172afe
-ei_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.inhibitor, Neuron.AMPA(), 1.0)
-
-# ╔═╡ 70d85f5a-8565-4140-8f7a-f025040a48af
-ie_rule = Neuron.ConnectionRule(Neuron.inhibitor, Neuron.excitator, Neuron.GABAa(), 1.0)
-
-# ╔═╡ 01e97fc9-d250-4669-b642-b1357401b275
-map_connect_map = Dict(Neuron.AMPA() => 1, Neuron.GABAa() => -1, nothing => 0)
-
-# ╔═╡ acf117c9-cbbc-4841-8610-256b8c55c23d
-equations(neurons[1])
-
-# ╔═╡ d9062ff6-5701-4e24-8ad8-876e669bd0e2
-
-
-# ╔═╡ 75c7c226-dfae-4106-912c-147b4aae7b31
-# Base neuron parameters
-Base.@kwdef mutable struct AdExNeuronParams
-    vrest::Float64 = -65.0e-3  # Resting membrane potential (V)
-    vthr::Float64 = -50.0e-3   # Spike threshold (V)
-    Je::Float64 = 30.0e-9       # Membrane time constant (Siemens S)
-    delta::Float64 = 2.0e-3    # Spike slope factor (V)
-    Cm::Float64 = 281e-12       # Membrane capacitance (Farad F)
-    TauW::Float64 = 144.0e-3    # Adaptation time constant (s)
-    a::Float64 = 10.0e-9        # Subthreshold adaptation (A)
-    gl::Float64 = 20e-9     # leak conductance
-    b::Float64 = 0.16e-9
-    input_value::Float64 = 0.5e-9
-    duration::Float64 = 900e-3
-    gmax::Float64 = 6.0e-9
-    tau_ampa::Float64 = 5.0e-3
-    tau_GABAa_rise::Float64 = 1e-3
-    tau_GABAa_fast::Float64 = 6e-3
-    vtarget_exc::Float64 = 0
-    vtarget_inh::Float64 = -75e-3
-    vspike::Float64 = 0
-    inc_gsyn::Float64 = 1e-9
-    e_neuron_1__soma__input_value::Float64 = 1e-9
-    e_neuron_2__soma__input_value::Float64 = 1e-9
-    e_neuron_3__soma__input_value::Float64 = 1e-9
-    e_neuron_4__soma__input_value::Float64 = 1e-9
-    e_neuron_5__soma__input_value::Float64 = 1e-9
-    e_neuron_6__soma__input_value::Float64 = 1e-9
-    e_neuron_7__soma__input_value::Float64 = 1e-9
-    e_neuron_8__soma__input_value::Float64 = 1e-9
-end
-
-# ╔═╡ 29088b47-9edc-4c5d-a8d1-44b38f9c938b
-
-
-# ╔═╡ bd02cf83-fb63-4a31-94fa-711c5701ac61
-params = AdExNeuronParams()
+params = Neuron.get_adex_neuron_params_skeleton(Float64)
 
 # ╔═╡ c39f4a5c-86ec-4e92-a20f-965cf37fc3cb
 @time i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)")) for i in 1:ni_neurons]
@@ -185,29 +123,72 @@ params = AdExNeuronParams()
 # ╔═╡ 9078ad20-c2b3-43e4-a0cf-571d857bfa41
 @time e_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("e_neuron_$(i)")) for i in 1:ne_neurons]
 
+# ╔═╡ 32e92fca-36d3-4ebd-a228-fd6b3f965694
+
+
+# ╔═╡ fa06378c-7089-419a-9c4f-65d48263155e
+begin
+	ee_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.excitator, Neuron.AMPA(), 0.5)
+	ei_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.inhibitor, Neuron.AMPA(), 1)
+	ie_rule = Neuron.ConnectionRule(Neuron.inhibitor, Neuron.excitator, Neuron.GABAa(), 1)
+	ii_rule = Neuron.ConnectionRule(Neuron.inhibitor, Neuron.inhibitor, Neuron.AMPA(), 0.5)
+end
+
 # ╔═╡ ac085539-5ace-4b3f-89ad-cc76432edb17
-(id_map, map_connect) = Neuron.init_connection_map(e_neurons, i_neurons, vcat(ee_rule, ei_rule, ie_rule))
+(id_map, map_connect) = Neuron.init_connection_map(e_neurons, i_neurons, vcat(ee_rule, ei_rule, ie_rule, ii_rule))
 
 # ╔═╡ 621b2c5e-4b7a-4d63-8dd6-3d68b7c6694a
-map_connect
+map_connect # pre => post
+
+# ╔═╡ 01e97fc9-d250-4669-b642-b1357401b275
+map_connect_map = Dict(Neuron.AMPA() => 1, Neuron.GABAa() => -1)
 
 # ╔═╡ 3c548ddc-61bc-4adb-911a-a357fa370270
-heatmap_connect = get.(Ref(map_connect_map), map_connect, 0)
+heatmap_connect = get.(Ref(map_connect_map), map_connect, missing)
+
+# ╔═╡ da7bbee3-04a6-4b9a-a744-09bc46fd73ff
+hs = size(heatmap_connect, 1)
+
+# ╔═╡ 10a0e856-2412-47c6-ae54-15116cecf0bc
+heatmap_connect[2, 1]
 
 # ╔═╡ 1479455e-162a-4f2a-89d0-45864839d6bb
-heatmap(1:10, 10:-1:1, heatmap_connect)
+begin
+	heatfig = Figure(size=(600, 500))
+	ax_heat = heatfig[1, 1] = Axis(heatfig; title="Connectivity matrix between neurons by synapse type", xlabel="Post synaptic neuron", ylabel="Pre synaptic neuron")
+	elem_1 = [PolyElement(color = :red, linestyle = nothing)]
+	elem_2 = [PolyElement(color = :blue, linestyle = nothing)]
+	heatmap!(ax_heat, heatmap_connect; colormap=[:red, :blue], nan_color=:white)
+	heatfig[1, 2] = Legend(heatfig, [elem_1, elem_2], ["AMPA", "GABAa"], framevisible = false)
+	heatfig
+end
 
 # ╔═╡ ebd8e444-a2d1-4f8b-908f-fc1b2c44d4b8
 connections = Neuron.instantiate_connections(id_map, map_connect, vcat(e_neurons, i_neurons))
 
 # ╔═╡ 65ac9a41-e76e-419c-a1ab-21795424ddb6
-@time network = Neuron.make_network(vcat(e_neurons, i_neurons), connections)
+begin
+	@time network = Neuron.make_network(vcat(e_neurons, i_neurons), connections)
+	# nothing
+end
 
 # ╔═╡ dea89bed-20c5-447b-aaea-510434099fe3
-tree = Utils.make_param_tree(network)
+begin
+	tree = Utils.make_param_tree(network)
+	nothing
+end
+
+# ╔═╡ acf117c9-cbbc-4841-8610-256b8c55c23d
+equations(neurons[1])
+
+# ╔═╡ d9062ff6-5701-4e24-8ad8-876e669bd0e2
+
 
 # ╔═╡ 462d463a-7c37-4b89-8c53-6a3a3180503a
-simplified_model = network
+begin 
+	simplified_model = structural_simplify(network)
+	# nothing
+end
 
 # ╔═╡ 02ca7412-77ef-4597-97d4-800572f92c84
 simplified_model.e_neuron_1.soma.Ib
@@ -215,11 +196,21 @@ simplified_model.e_neuron_1.soma.Ib
 # ╔═╡ 01baa3b5-9220-40be-b783-a194a7703b65
 continuous_events(simplified_model)
 
-# ╔═╡ d69ada25-0300-4f86-9c2f-39f23ca4a9de
-uparams = Neuron.AdExNeuronUParams()
+# ╔═╡ 29088b47-9edc-4c5d-a8d1-44b38f9c938b
 
-# ╔═╡ ffe8ec7d-b1ea-4b76-9d0b-86b4cc74adb5
-iparams, iuparams = Neuron.map_params(simplified_model, params, uparams)
+
+# ╔═╡ d69ada25-0300-4f86-9c2f-39f23ca4a9de
+uparams = Neuron.get_adex_neuron_uparams_skeleton(Float64)
+
+# ╔═╡ f40be669-9d43-40dc-baff-d2209f35972e
+begin
+	params.input_value = 1e-9
+	params.inc_gsyn = 1e-9
+	params.tau_GABAa_fast=6e-3
+	params.tau_GABAa_rise=1e-3
+	params.e_neuron_1__soma__input_value = 1e-9
+	iparams, iuparams = Neuron.map_params(simplified_model, params, uparams)
+end
 
 # ╔═╡ 5f3e4953-eede-48e1-813c-3c8361699096
 input_e = Utils.fetch_tree(["e_neuron_1", "Ib"], tree)
@@ -234,7 +225,7 @@ input_e = Utils.fetch_tree(["e_neuron_1", "Ib"], tree)
 prob = ODEProblem(simplified_model, iuparams, tspan, iparams)
 
 # ╔═╡ 704f5c30-5c26-4dce-b152-24609263d70d
-sol = solve(prob, Vern6(); abstol=1e-7, reltol=1e-7)
+sol = solve(prob, Vern6(); abstol=1e-9, reltol=1e-9)
 
 # ╔═╡ e69ccf44-8098-4ecc-9c4f-3f93c0000beb
 sol[end-10:end]
@@ -258,10 +249,10 @@ before_offset = 0
 after_offset = 1
 
 # ╔═╡ ab42d5d1-679b-4b30-8bfd-91a4d8fafa15
-plot_neuron_value(sol.t, sol[network.e_neuron_1.soma.v], params, sol[network.e_neuron_1.soma.Ib];
+plot_neuron_value(sol.t, sol[network.e_neuron_1.soma.v], params, sol[network.e_neuron_1.soma.Ii];
     start=before_offset,
     stop=after_offset,
-    title="Pre synaptic neuron voltage along time.",
+    title="Neuron voltage along time.",
     xlabel="time (in s)",
     ylabel="voltage (in V)",
 	is_voltage=true,
@@ -272,15 +263,15 @@ plot_neuron_value(sol.t, sol[network.e_neuron_1.soma.v], params, sol[network.e_n
 plot_neuron_value(sol.t, sol[network.e_neuron_1.soma.w], params, zeros(Int, size(sol[network.e_neuron_1.soma.w]));
     start=before_offset,
     stop=after_offset,
-    title="Pre synaptic neuron voltage along time.",
+    title="Neuron adaptation along time.",
     xlabel="time (in s)",
-    ylabel="voltage (in V)",
+    ylabel="adaptation (in A)",
 	is_voltage=false,
 	tofile=false
 )
 
 # ╔═╡ a81c6385-0952-4005-8534-afd24f7a1a77
-plot_neuron_value(sol.t, sol[network.e_neuron_3.soma.v], params, sol[network.e_neuron_3.soma.Ie];
+plot_neuron_value(sol.t, sol[network.e_neuron_1.soma.v], params, sol[network.e_neuron_1.soma.Ie];
     start=before_offset,
     stop=after_offset,
     title="Pre synaptic neuron voltage along time.",
@@ -294,7 +285,7 @@ plot_neuron_value(sol.t, sol[network.e_neuron_3.soma.v], params, sol[network.e_n
 network.i_neuron_1.ampa_syn
 
 # ╔═╡ e398609c-25e1-491f-ae6d-4f7bc4e49ce9
-plot_neuron_value(sol.t, sol[network.i_neuron_2.soma.v], params, sol[network.i_neuron_2.ampa_syn.g_syn];
+plot_neuron_value(sol.t, sol[network.i_neuron_1.soma.v], params, sol[network.i_neuron_1.soma.Ie];
     start=before_offset,
     stop=after_offset,
     title="Pre synaptic neuron voltage along time.",
@@ -305,7 +296,7 @@ plot_neuron_value(sol.t, sol[network.i_neuron_2.soma.v], params, sol[network.i_n
 )
 
 # ╔═╡ f71147fb-09f3-4a26-81c5-3065180155f9
-plot_neuron_value(sol.t, sol[network.e_neuron_3.soma.v], params, sol[network.e_neuron_3.ampa_syn.g_syn];
+plot_neuron_value(sol.t, sol[network.e_neuron_1.gabaa_syn.g_syn], params, sol[network.e_neuron_1.soma.Ii];
     start=before_offset,
     stop=after_offset,
     title="Pre synaptic neuron voltage along time.",
@@ -406,12 +397,12 @@ plot_spikes(spikes_inh; start=0, stop=1, color=:blue)
 # ╠═9078ad20-c2b3-43e4-a0cf-571d857bfa41
 # ╠═32e92fca-36d3-4ebd-a228-fd6b3f965694
 # ╠═fa06378c-7089-419a-9c4f-65d48263155e
-# ╠═d9c156aa-f201-40f7-9be1-16f01c172afe
-# ╠═70d85f5a-8565-4140-8f7a-f025040a48af
 # ╠═ac085539-5ace-4b3f-89ad-cc76432edb17
 # ╠═621b2c5e-4b7a-4d63-8dd6-3d68b7c6694a
 # ╠═01e97fc9-d250-4669-b642-b1357401b275
 # ╠═3c548ddc-61bc-4adb-911a-a357fa370270
+# ╠═da7bbee3-04a6-4b9a-a744-09bc46fd73ff
+# ╠═10a0e856-2412-47c6-ae54-15116cecf0bc
 # ╠═1479455e-162a-4f2a-89d0-45864839d6bb
 # ╠═ebd8e444-a2d1-4f8b-908f-fc1b2c44d4b8
 # ╠═65ac9a41-e76e-419c-a1ab-21795424ddb6
@@ -421,11 +412,9 @@ plot_spikes(spikes_inh; start=0, stop=1, color=:blue)
 # ╠═462d463a-7c37-4b89-8c53-6a3a3180503a
 # ╠═02ca7412-77ef-4597-97d4-800572f92c84
 # ╠═01baa3b5-9220-40be-b783-a194a7703b65
-# ╠═75c7c226-dfae-4106-912c-147b4aae7b31
 # ╠═29088b47-9edc-4c5d-a8d1-44b38f9c938b
-# ╠═bd02cf83-fb63-4a31-94fa-711c5701ac61
 # ╠═d69ada25-0300-4f86-9c2f-39f23ca4a9de
-# ╠═ffe8ec7d-b1ea-4b76-9d0b-86b4cc74adb5
+# ╠═f40be669-9d43-40dc-baff-d2209f35972e
 # ╠═5f3e4953-eede-48e1-813c-3c8361699096
 # ╠═b26ac509-3cf7-4c03-b269-06d6c8b3ab87
 # ╠═47848510-7d59-4c34-9bb9-afbee580c07b

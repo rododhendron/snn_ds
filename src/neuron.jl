@@ -1,4 +1,5 @@
 module Neuron
+using Random
 using ModelingToolkit, Parameters, StringDistances, Transducers, BangBang, StaticArrays, Symbolics, DifferentialEquations, ComponentArrays
 using ModelingToolkit: t_nounits as t, D_nounits as D, Model
 using PrecompileTools: @setup_workload, @compile_workload
@@ -6,6 +7,10 @@ using PrecompileTools: @setup_workload, @compile_workload
 const start_input::Float64 = 200e-3
 # const input_duration::Float64 = 200e-3
 step_fn(t, iv, duration) = ifelse(start_input < t < start_input + duration, iv, 0)
+const dt_clamp = 5 # ms
+clock = Clock(dt_clamp)
+k = ShiftIndex(clock)
+
 @register_symbolic step_fn(t, iv, duration)
 
 @mtkmodel Soma begin # AdEx neuron from https://journals.physiology.org/doi/pdf/10.1152/jn.00686.2005
@@ -16,6 +21,7 @@ step_fn(t, iv, duration) = ifelse(start_input < t < start_input + duration, iv, 
         Ii(t), [input = true]
         Ib(t), [input = true]
         R(t), [output = true]
+        # Rp(t), [output = true]
     end
     @parameters begin
         Je
@@ -36,6 +42,9 @@ step_fn(t, iv, duration) = ifelse(start_input < t < start_input + duration, iv, 
         Ib ~ step_fn(t, input_value, duration)
         D(R) ~ 0
     end
+    # @continuous_events begin
+        # [Rp(k) != Rp(k-1)] => [v ~ vrest]
+    # end
 end
 
 @mtkmodel SynapseAMPA begin # AMPA synapse https://neuronaldynamics.epfl.ch/online/Ch3.S1.html#Ch3.E2
@@ -65,33 +74,31 @@ end
     end
     # have to bind I on connect
     @equations begin
-        D(g_syn) ~ -g_syn / tau_GABAa_rise + g_syn / tau_GABAa_fast
+        D(g_syn) ~ g_syn / tau_GABAa_rise - g_syn / tau_GABAa_fast
     end
 end
 
 function get_adex_neuron_params_skeleton(type::DataType)
     ComponentVector{type}(
-        vrest=-65.0e-3,  # Resting membrane potential (V)
-        vthr=-50.0e-3,   # Spike threshold (V)
-        Je=30.0e-9,       # Membrane time constant (Siemens S)
-        delta=2.0e-3,    # Spike slope factor (V)
-        Cm=281e-12,       # Membrane capacitance (Farad F)
-        TauW=144.0e-3,    # Adaptation time constant (s)
-        a=40.0e-9,        # Subthreshold adaptation (A)
-        gl=20e-9,     # leak conductance
-        b=0.16e-9,
-        input_value=0,
-        gmax=6.0e-9,
-        tau_ampa=10.0e-3,
-        tau_GABAa_rise=1e-3,
-        tau_GABAa_fast=6e-3,
-        vtarget_exc=0,
-        vtarget_inh=-75e-3,
-        vspike=0,
-        inc_gsyn=1e-9,
-        i_neuron_1__soma__inc_gsyn=0.52e-9,
-        e_neuron_1__soma__input_value=0.52e-9,
-        duration=400e-3,
+        vrest=-65.0e-3,     # Resting membrane potential (V)
+        vthr=-50.0e-3,      # Spike threshold (V)
+        Je=30.0e-9,         # Membrane time constant (Siemens S)
+        delta=2.0e-3,       # Spike slope factor (V)
+        Cm=281e-12,         # Membrane capacitance (Farad F)
+        TauW=144.0e-3,      # Adaptation time constant (s)
+        a=40.0e-9,          # Subthreshold adaptation (A)
+        gl=20e-9,           # leak conductance
+        b=0.16e-9,          # Spiking adaptation (A)
+        input_value=0,      # Ib = Basal input current (A)
+        tau_ampa=10.0e-3,   # AMPA decrease time constant (s)
+        tau_GABAa_rise=1e-3,# GABAa increase time constant (s)
+        tau_GABAa_fast=6e-3,# GABAa decrease time constant (s)
+        vtarget_exc=0,      # Voltage value that drive excitation (V)
+        vtarget_inh=-75e-3, # Voltage value that drive inhibition (V)
+        vspike=0,           # Voltage value defining resetting voltage at resting value (V)
+        inc_gsyn=0.3e-9,    # Conductance value by which to increment when a synapse receive a spike (S)
+        e_neuron_1__soma__input_value=0.80e-9, # input value specific to excitatory neuron 1
+        duration=400e-3,    # Duration of the stimulus onset (s)
     )
 end
 
@@ -172,7 +179,7 @@ function instantiate_connections(id_map, map_connect, post_neurons)::Vector{Pair
 end
 
 function init_connection_map(e_neurons::Vector{ODESystem}, i_neurons::Vector{ODESystem}, connection_rules::Vector{ConnectionRule})
-    prob_filter(prob) = Filter(_x -> rand() <= prob)
+    rng = Xoshiro(123)
     neurons = vcat(e_neurons, i_neurons)
     n_neurons = length(e_neurons) + length(i_neurons)
     id_map = [(i, neurons[i]) for i in 1:n_neurons]
@@ -181,9 +188,8 @@ function init_connection_map(e_neurons::Vector{ODESystem}, i_neurons::Vector{ODE
         pre_neurons_ids = rule.pre_neurons_type == excitator ? range(1, length(e_neurons)) : range(length(e_neurons) + 1, n_neurons)
         for i in pre_neurons_ids
             post_neurons_ids = rule.post_neurons_type == excitator ? range(1, length(e_neurons)) : range(length(e_neurons) + 1, n_neurons)
-            post_prob_neurons_ids = post_neurons_ids |> prob_filter(rule.prob) |> collect
-
-            map_connect[pre_neurons_ids, post_prob_neurons_ids] .= Ref(rule.synapse_type)
+            post_prob_neurons_ids = post_neurons_ids |> x -> randsubseq(rng, x, rule.prob)
+            map_connect[i, post_prob_neurons_ids] .= Ref(rule.synapse_type)
         end
     end
     (id_map, map_connect)

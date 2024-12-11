@@ -16,8 +16,8 @@ gpu = x -> x
 
 tspan = (0, 1)
 n_neurons = 10
-i_neurons_n = 20
-e_neurons_n = 80
+i_neurons_n = floor(n_neurons * 0.8)
+e_neurons_n = n_neurons - i_neurons_n
 
 # @time params = Neuron.AdExNeuronParams()
 @time params = Neuron.get_adex_neuron_params_skeleton(Float64)
