@@ -64,7 +64,6 @@ end
 
 @mtkmodel SynapseGABAa begin # GABAa synapse https://neuronaldynamics.epfl.ch/online/Ch3.S1.html#Ch3.E2
     @parameters begin
-        tau_GABAa_rise
         tau_GABAa_fast
         vtarget_inh
         inc_gsyn
@@ -74,7 +73,7 @@ end
     end
     # have to bind I on connect
     @equations begin
-        D(g_syn) ~ g_syn / tau_GABAa_rise - g_syn / tau_GABAa_fast
+        D(g_syn) ~ -g_syn / tau_GABAa_fast
     end
 end
 
@@ -189,7 +188,9 @@ function init_connection_map(e_neurons::Vector{ODESystem}, i_neurons::Vector{ODE
         for i in pre_neurons_ids
             post_neurons_ids = rule.post_neurons_type == excitator ? range(1, length(e_neurons)) : range(length(e_neurons) + 1, n_neurons)
             post_prob_neurons_ids = post_neurons_ids |> x -> randsubseq(rng, x, rule.prob)
-            map_connect[i, post_prob_neurons_ids] .= Ref(rule.synapse_type)
+            # disallow self connection else bursting bug
+            post_neurons = [n for n in post_prob_neurons_ids if n != i]
+            map_connect[i, post_neurons] .= Ref(rule.synapse_type)
         end
     end
     (id_map, map_connect)
