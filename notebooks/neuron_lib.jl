@@ -6,7 +6,7 @@ using InteractiveUtils
 
 # ╔═╡ e86eea66-ad59-11ef-2550-cf2588eae9d6
 begin
-	using DrWatson
+	using DrWatson, Pkg
 end
 
 # ╔═╡ 31c85e65-cf3e-465a-86da-9a8547f7bec0
@@ -23,6 +23,9 @@ begin
 	include("../src/utils.jl")
 	include("../src/neuron.jl")
 end
+
+# ╔═╡ 178284dc-a087-4443-b34a-ed36da8bda28
+Pkg.instantiate()
 
 # ╔═╡ cd62780e-8a5a-49eb-b3d1-33c88e966332
 html"""<style>
@@ -92,7 +95,7 @@ end
 
 function plot_spikes((spikes_e, spikes_i); start=0, stop=0, xlabel="", ylabel="", title="", name="", color=(:grey, :grey), height=600)
 	spikes = vcat(spikes_e, spikes_i)
-    f, ax, ax1 = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, height=height, yticks=WilkinsonTicks(size(spikes, 1)))
+    f, ax, ax1 = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, height=height, yticks=LinearTicks(size(spikes, 1)))
     xlims!(ax1, (start, stop))
 	size_e = size(spikes_e, 1)
 	spikes_x = spikes
@@ -120,8 +123,8 @@ end
 # ╔═╡ 905483e2-78b9-40ed-8421-cd1b406003d9
 begin
 	tspan = (0, 1)
-	ni_neurons = 2
-	ne_neurons = 8
+	ni_neurons = 100
+	ne_neurons = 400
 end
 
 # ╔═╡ 88923549-1fb1-4337-aaa7-885029ca2321
@@ -138,10 +141,10 @@ params = Neuron.get_adex_neuron_params_skeleton(Float64)
 
 # ╔═╡ fa06378c-7089-419a-9c4f-65d48263155e
 begin
-	ee_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.excitator, Neuron.AMPA(), 0.5)
-	ei_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.inhibitor, Neuron.AMPA(), 0.5)
-	ie_rule = Neuron.ConnectionRule(Neuron.inhibitor, Neuron.excitator, Neuron.GABAa(), 1)
-	ii_rule = Neuron.ConnectionRule(Neuron.inhibitor, Neuron.inhibitor, Neuron.AMPA(), 1)
+	ee_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.excitator, Neuron.AMPA(), 0.05)
+	ei_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.inhibitor, Neuron.AMPA(), 0.05)
+	ie_rule = Neuron.ConnectionRule(Neuron.inhibitor, Neuron.excitator, Neuron.GABAa(), 0.08)
+	ii_rule = Neuron.ConnectionRule(Neuron.inhibitor, Neuron.inhibitor, Neuron.AMPA(), 0.08)
 end
 
 # ╔═╡ ac085539-5ace-4b3f-89ad-cc76432edb17
@@ -170,7 +173,7 @@ hs = size(heatmap_connect, 1)
 
 # ╔═╡ 1479455e-162a-4f2a-89d0-45864839d6bb
 begin
-	heatfig = Figure(size=(600, 500))
+	heatfig = Figure(size=(900,700))
 	ticks = LinearTicks(size(heatmap_connect, 1))
 	ax_heat = heatfig[1, 1] = Axis(heatfig; title="Connectivity matrix between neurons by synapse type", xlabel="Post synaptic neuron", ylabel="Pre synaptic neuron", xticks=ticks, yticks=ticks)
 	elem_1 = [PolyElement(color = :red, linestyle = nothing)]
@@ -238,14 +241,15 @@ end
 # ╔═╡ f40be669-9d43-40dc-baff-d2209f35972e
 begin
 	params.input_value = 0e-9
-	params.inc_gsyn = 20e-9
+	params.inc_gsyn = 5e-9
 	params.tau_GABAa_fast=8e-3
 	# params.vtarget_inh = -100e-3
 	params.e_neuron_1__soma__input_value = 1e-9
 
 	make_rule(prefix, range, suffix, value) = Symbol.(prefix .* "_" .* string.(range) .* "__" .* suffix) .=> value
 	rules = []
-	append!(rules, make_rule("e_neuron", 1:ni_neurons, "gabaa_syn__inc_gsyn", 85e-9))
+	append!(rules, make_rule("e_neuron", 1:ne_neurons, "gabaa_syn__inc_gsyn", 5e-9))
+	append!(rules, make_rule("e_neuron", 1:100, "soma__input_value", 1e-9))
 	overriden_params = override_params(params, rules)
 
 	iparams, iuparams = Neuron.map_params(simplified_model, overriden_params, uparams; match_nums=true)
@@ -270,7 +274,10 @@ iparams[end]
 prob = ODEProblem(simplified_model, iuparams, tspan, iparams)
 
 # ╔═╡ 704f5c30-5c26-4dce-b152-24609263d70d
-sol = solve(prob, Vern6(); abstol=1e-9, reltol=1e-9)
+begin
+	# sol = solve(prob, Vern6(); abstol=1e-9, reltol=1e-9)
+	sol = solve(prob, KenCarp47(linsolve=KrylovJL_GMRES()); abstol=1e-5, reltol=1e-5, dtmax=1e-3)
+end
 
 # ╔═╡ e69ccf44-8098-4ecc-9c4f-3f93c0000beb
 sol[end-10:end]
@@ -424,7 +431,7 @@ spikes_inh = Utils.get_spike_timings(mi, sol)
 vcat(spikes_inh, spikes_times)
 
 # ╔═╡ b43e5b71-edce-4ad9-ba35-588a5dd6cf9a
-plot_spikes((spikes_times, spikes_inh); start=0, stop=1, color=(:red, :blue), height=200)
+plot_spikes((spikes_times, spikes_inh); start=0, stop=1, color=(:red, :blue), height=1500)
 
 # ╔═╡ 2341a3bb-d912-4a7e-93ba-fe856d3aaa4d
 
@@ -435,6 +442,7 @@ plot_spikes((spikes_times, spikes_inh); start=0, stop=1, color=(:red, :blue), he
 # ╔═╡ Cell order:
 # ╠═e86eea66-ad59-11ef-2550-cf2588eae9d6
 # ╠═31c85e65-cf3e-465a-86da-9a8547f7bec0
+# ╠═178284dc-a087-4443-b34a-ed36da8bda28
 # ╠═cd62780e-8a5a-49eb-b3d1-33c88e966332
 # ╠═8eda90d1-5695-47d7-a435-79c49a17c50e
 # ╠═16720d97-2552-4852-a011-4ea19c8b9d8b
