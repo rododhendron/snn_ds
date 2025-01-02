@@ -55,7 +55,7 @@ function get_slice_xy(x, y; start=0, stop=0)
     (x[first_x_idx:last_x_idx], y[first_x_idx:last_x_idx])
 end
 
-function make_fig(;xlabel="", ylabel="", title="", height=700, width=1600, yticks=Makie.automatic)
+function make_fig(;xlabel="", ylabel="", title="", height=700, width=1600, yticks=Makie.automatic, call_ax2=true)
     f = Figure(size=(width, height))
     ax1 = Axis(f[1, 1],
         title=title,
@@ -64,14 +64,18 @@ function make_fig(;xlabel="", ylabel="", title="", height=700, width=1600, ytick
 		yticks=yticks,
 		xticks=LinearTicks(10)
     )
-	ax2 = Axis(f[1, 1],
-		yaxisposition = :right,
-		ylabel="input_current, in A"
-	)
-	linkxaxes!(ax1, ax2)
+	if call_ax2
+		ax2 = Axis(f[1, 1],
+			yaxisposition = :right,
+			ylabel="input_current, in A"
+		)
+		linkxaxes!(ax1, ax2)
+    	(f, ax1, ax2)
+	else
+		(f, ax1, nothing)
+	end
 	# hidespines!(ax2)
 	# hidedecorations!(ax2)
-    (f, ax1, ax2)
 end
 
 function plot_neuron_value(time, value, p, input_current; start=0, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false)
@@ -95,8 +99,8 @@ end
 
 function plot_spikes((spikes_e, spikes_i); start=0, stop=0, xlabel="", ylabel="", title="", name="", color=(:grey, :grey), height=600)
 	spikes = vcat(spikes_e, spikes_i)
-    f, ax, ax1 = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, height=height, yticks=LinearTicks(size(spikes, 1)))
-    xlims!(ax1, (start, stop))
+    f, ax, ax1 = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, height=height, yticks=LinearTicks(size(spikes, 1)), call_ax2=false)
+    xlims!(ax, (start, stop))
 	size_e = size(spikes_e, 1)
 	spikes_x = spikes
 	int_range = 1:size(spikes, 1)
@@ -123,8 +127,8 @@ end
 # ╔═╡ 905483e2-78b9-40ed-8421-cd1b406003d9
 begin
 	tspan = (0, 1)
-	ni_neurons = 100
-	ne_neurons = 400
+	ni_neurons = 8
+	ne_neurons = 32
 end
 
 # ╔═╡ 88923549-1fb1-4337-aaa7-885029ca2321
@@ -141,10 +145,10 @@ params = Neuron.get_adex_neuron_params_skeleton(Float64)
 
 # ╔═╡ fa06378c-7089-419a-9c4f-65d48263155e
 begin
-	ee_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.excitator, Neuron.AMPA(), 0.05)
-	ei_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.inhibitor, Neuron.AMPA(), 0.05)
-	ie_rule = Neuron.ConnectionRule(Neuron.inhibitor, Neuron.excitator, Neuron.GABAa(), 0.08)
-	ii_rule = Neuron.ConnectionRule(Neuron.inhibitor, Neuron.inhibitor, Neuron.AMPA(), 0.08)
+	ee_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.excitator, Neuron.AMPA(), 0.2)
+	ei_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.inhibitor, Neuron.AMPA(), 0.3)
+	ie_rule = Neuron.ConnectionRule(Neuron.inhibitor, Neuron.excitator, Neuron.GABAa(), 0.3)
+	ii_rule = Neuron.ConnectionRule(Neuron.inhibitor, Neuron.inhibitor, Neuron.AMPA(), 0.3)
 end
 
 # ╔═╡ ac085539-5ace-4b3f-89ad-cc76432edb17
@@ -241,15 +245,15 @@ end
 # ╔═╡ f40be669-9d43-40dc-baff-d2209f35972e
 begin
 	params.input_value = 0e-9
-	params.inc_gsyn = 5e-9
+	params.inc_gsyn = 20e-9
 	params.tau_GABAa_fast=8e-3
 	# params.vtarget_inh = -100e-3
 	params.e_neuron_1__soma__input_value = 1e-9
 
 	make_rule(prefix, range, suffix, value) = Symbol.(prefix .* "_" .* string.(range) .* "__" .* suffix) .=> value
 	rules = []
-	append!(rules, make_rule("e_neuron", 1:ne_neurons, "gabaa_syn__inc_gsyn", 5e-9))
-	append!(rules, make_rule("e_neuron", 1:100, "soma__input_value", 1e-9))
+	append!(rules, make_rule("e_neuron", 1:ne_neurons, "gabaa_syn__inc_gsyn", 70e-9))
+	append!(rules, make_rule("e_neuron", 1:5, "soma__input_value", 1e-9))
 	overriden_params = override_params(params, rules)
 
 	iparams, iuparams = Neuron.map_params(simplified_model, overriden_params, uparams; match_nums=true)
@@ -431,7 +435,7 @@ spikes_inh = Utils.get_spike_timings(mi, sol)
 vcat(spikes_inh, spikes_times)
 
 # ╔═╡ b43e5b71-edce-4ad9-ba35-588a5dd6cf9a
-plot_spikes((spikes_times, spikes_inh); start=0, stop=1, color=(:red, :blue), height=1500)
+plot_spikes((spikes_times, spikes_inh); start=0, stop=1, color=(:red, :blue), height=1500, title="Network activity", xlabel="time (in s)", ylabel="neuron index")
 
 # ╔═╡ 2341a3bb-d912-4a7e-93ba-fe856d3aaa4d
 
