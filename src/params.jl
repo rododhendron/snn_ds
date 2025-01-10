@@ -89,15 +89,34 @@ end
 
 function get_input_neuron_index(idx_loc::NTuple{N, Int}, neurons, select_size)
     # !!! do not specify idx_loc
-    selections = [(i-select_size:i+select_size) for i in idx_loc]
+    selections = [(i-select_size, i+select_size) for i in idx_loc]
     # adjust selection with dim limits
     dims = size(neurons)
-    for sel, dim in zip()
-    neurons[]
+    select_query = NTuple{Pair{Int, Int}}}(undef, size(dims, 1))
+    for sel, dim in zip(selections, dims)
+        min_sel = min(sel[1], 1)
+        max_sel = max(sel[2], dim)
+        push!(select_query, (min_sel:max_sel))
+    end
+    return neurons[CartesianIndex(select_query)]
+end
+
+function fetch_neuron_ids(neurons::Vector)
+    rule_dim, neuron_dims... = size(neurons)
+    for i in 1:rule_dim
+
+    end
+end
+
+function make_input_rule_neurons(neuron_groups, input_value)
+    make_rule("e_neuron", fetch_neuron_ids(neuron_groups, "soma__input_value", input_value)
+    rules_target = 1:size(neuron_groups, 1) |> Map(i -> make_rule("e_neuron", fetch_neuron_ids([neuron_groups[i]]), "soma__input_value", x)) |> collect
 end
 
 function update_neurons_rules_from_sequence(neurons, stim_params, network_params)
     # update iv value in neurons
     stims_loc = isnothing(stims_params.deviant_idx) ? stims_params.standard_idx : [stims_params.standard_idx, stims_params.deviant_idx]
-    input_neurons_idx_groups = [get_input_neuron_index(idx_loc, neurons, stims_params.select_size) for idx_loc in stims_loc]
+    input_neurons_groups = [get_input_neuron_index(idx_loc, neurons, stims_params.select_size) for idx_loc in stims_loc]
+
+    rules = [make_input_rule_neurons(input_neurons_groups, stim_params.amplitude)]
 end
