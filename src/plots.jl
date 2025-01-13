@@ -3,7 +3,6 @@ module Plots
 using CairoMakie, ComponentArrays
 using CairoMakie: Axis
 
-include("utils.jl")
 using ..Utils
 
 function get_slice_xy(x, y; start=0, stop=0)

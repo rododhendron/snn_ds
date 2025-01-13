@@ -2,13 +2,19 @@ module Device
 
 export to_device_fn
 
-using CUDA, AMDGPU
 
-function to_device_fn()
-    if CUDA.functional()
-        return CuArray
-    elseif AMDGPU.functional()
-        return ROCArray
+function to_device_fn(;backend="")
+    if backend != ""
+        @eval begin
+            using CUDA, AMDGPU
+        end
+        if CUDA.functional()
+            return CuArray
+        elseif AMDGPU.functional()
+            return ROCArray
+        else
+            return x -> x
+        end
     else
         return x -> x
     end

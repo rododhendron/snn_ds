@@ -261,8 +261,10 @@ function map_params(network::ODESystem, params::ComponentArray, uparams::Compone
 end
 
 @setup_workload begin
-    stclist = [AdExNeuronParams(), AdExNeuronUParams()]
     @compile_workload begin
+        tspan = (0, 1)
+        params = get_adex_neuron_params_skeleton(Float64)
+        uparams = get_adex_neuron_uparams_skeleton(Float64)
         i_neurons_n = 2
         e_neurons_n = 2
         i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)")) for i in 1:i_neurons_n]
@@ -277,7 +279,7 @@ end
 
         network = Neuron.make_network(vcat(e_neurons, i_neurons), connections)
 
-        simplified_model = network
+        simplified_model = structural_simplify(network, split=false)
 
         iparams, iuparams = Neuron.map_params(simplified_model, params, uparams; match_nums=false)
 

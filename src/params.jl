@@ -1,7 +1,9 @@
 module Params
+using Base.Cartesian
 using Symbolics
 using ComponentArrays
 using Distributions
+using Transducers
 
 function get_model_params(Je=10, delta=2, vthr=-50, Cm=200, vrest=-65, TauW=500, w0=0, a=6)	# model params
 	mparams = SLVector((
@@ -87,36 +89,42 @@ function generate_sequence(params::ComponentVector)
     return stims
 end
 
-function get_input_neuron_index(idx_loc::NTuple{N, Int}, neurons, select_size)
+function get_input_neuron_index(idx_loc::NTuple, neurons, select_size)
     # !!! do not specify idx_loc
     selections = [(i-select_size, i+select_size) for i in idx_loc]
     # adjust selection with dim limits
     dims = size(neurons)
-    select_query = NTuple{Pair{Int, Int}}}(undef, size(dims, 1))
-    for sel, dim in zip(selections, dims)
-        min_sel = min(sel[1], 1)
-        max_sel = max(sel[2], dim)
-        push!(select_query, (min_sel:max_sel))
+    select_query = Vector{UnitRange{Int}}(undef, size(dims, 1))
+    for (sel, dim) in zip(selections, dims)
+        min_sel::Int = min(sel[1], 1)
+        max_sel::Int = max(sel[2], dim)
+        push!(select_query, min_sel:max_sel)
     end
-    return neurons[CartesianIndex(select_query)]
+    return neurons[CartesianIndices(select_query)]
 end
 
-function fetch_neuron_ids(neurons::Vector)
-    rule_dim, neuron_dims... = size(neurons)
-    for i in 1:rule_dim
+function fetch_neuron_ids(neurons::AbstractArrays{T, N}) where {T, N}
+    pattern = r"[ei]_neuron_(\d+)"
+    capture_neuron_id(neuron)::Int = match(pattern, neuron.name) |> m -> parse(Int, m.captures[1])
+    @show size(neurons)
+    ids = Array{Int}(undef, size(neurons)[1:N-1]...)
 
+    @nloops (N-1) i neurons begin
+        obj = neurons[(@ntuple (N*1) i)...]
+        ids[(@ntuple (N-1) i)...] = capture_neuron_id(obj)
     end
+    ids
 end
 
 function make_input_rule_neurons(neuron_groups, input_value)
-    make_rule("e_neuron", fetch_neuron_ids(neuron_groups, "soma__input_value", input_value)
     rules_target = 1:size(neuron_groups, 1) |> Map(i -> make_rule("e_neuron", fetch_neuron_ids([neuron_groups[i]]), "soma__input_value", x)) |> collect
 end
 
-function update_neurons_rules_from_sequence(neurons, stim_params, network_params)
+function update_neurons_rules_from_sequence(neurons, stims_params, network_params)
     # update iv value in neurons
     stims_loc = isnothing(stims_params.deviant_idx) ? stims_params.standard_idx : [stims_params.standard_idx, stims_params.deviant_idx]
-    input_neurons_groups = [get_input_neuron_index(idx_loc, neurons, stims_params.select_size) for idx_loc in stims_loc]
+    input_neurons_groups = [get_input_neuron_index((idx_loc,), neurons, stims_params.select_size) for idx_loc in stims_loc]
 
-    rules = [make_input_rule_neurons(input_neurons_groups, stim_params.amplitude)]
+    rules = [make_input_rule_neurons(input_neurons_groups, stims_params.amplitude)]
+end
 end
