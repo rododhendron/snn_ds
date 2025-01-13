@@ -13,7 +13,7 @@ ti = time()
 @testset "SNN.jl" begin
     tspan = (0, 1)
     n_neurons = 10
-    i_neurons_n = floor(n_neurons * 0.8)
+    i_neurons_n = floor(Int, n_neurons * 0.2)
     e_neurons_n = n_neurons - i_neurons_n
 
     @time params = SNN.Neuron.get_adex_neuron_params_skeleton(Float64)
@@ -37,9 +37,11 @@ ti = time()
         stim_params = SNN.Params.get_stim_params_skeleton()
         rules = SNN.Params.update_neurons_rules_from_sequence(e_neurons, stim_params, params)
 
+        @show rules
+
     end
 end
 
 ti = time() - ti
 println("\nTest took total time of:")
-println(round(ti/60, digits = 3), " minutes")
+println(round(ti / 60, digits=3), " minutes")
