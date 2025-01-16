@@ -13,9 +13,10 @@ k = ShiftIndex(clock)
 function step_fn(t, iv, schedule, neuron_group)
     # Vector of (t_start, duration, target)
     t_range = searchsorted(schedule[1, :], t)
-    stim = schedule[:, t_range.start]
+    t_min = min(t_range.start, t_range.stop) |> x -> x == 0 ? 1 : x
+    stim = schedule[:, t_min]
     return ifelse(
-        (neuron_group == stim[3]) & (stim[1] <= t <= stim[1] + duration),
+        (neuron_group == stim[3]) & (stim[1] <= t <= stim[1] + stim[2]),
         iv,
         0
     )
@@ -57,7 +58,7 @@ end
         D(R) ~ 0
     end
     # @continuous_events begin
-        # [Rp(k) != Rp(k-1)] => [v ~ vrest]
+    # [Rp(k) != Rp(k-1)] => [v ~ vrest]
     # end
 end
 
@@ -110,7 +111,7 @@ function get_adex_neuron_params_skeleton(type::DataType)
         vtarget_inh=-75e-3, # Voltage value that drive inhibition (V)
         vspike=0,           # Voltage value defining resetting voltage at resting value (V)
         inc_gsyn=0.3e-9,    # Conductance value by which to increment when a synapse receive a spike (S)
-        e_neuron_1__soma__input_value=0.80e-9, # input value specific to excitatory neuron 1
+        # e_neuron_1__soma__input_value=0.80e-9, # input value specific to excitatory neuron 1
         duration=400e-3,    # Duration of the stimulus onset (s)
         group=0,
     )
@@ -192,7 +193,16 @@ function instantiate_connections(id_map, map_connect, post_neurons)::Vector{Pair
     all_callbacks
 end
 
-function infer_connection_from_map(neurons::Vector{ODESystem})
+function infer_connection_from_map(neurons::Vector{ODESystem}, mapping)
+    # take neurons, assign ids, map connections from dict map
+    n_neurons = length(neurons)
+    id_map = [(i, neurons[i]) for i in 1:n_neurons]
+    map_connect = Array{Union{Nothing,SynapseType}}(nothing, n_neurons, n_neurons)
+    for (pre_neuron_id, post_neuron_id, synapse) in mapping
+        map_connect[pre_neuron_id, post_neuron_id] = synapse
+    end
+    (id_map, map_connect)
+end
 function init_connection_map(e_neurons::Vector{ODESystem}, i_neurons::Vector{ODESystem}, connection_rules::Vector{ConnectionRule})
     rng = Xoshiro(123)
     neurons = vcat(e_neurons, i_neurons)

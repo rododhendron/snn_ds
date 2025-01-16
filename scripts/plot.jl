@@ -27,4 +27,24 @@ function plot_neuron_value(time, value, p; start=0, stop=0, xlabel="", ylabel=""
     save(name, f)
 end
 
+function plot_spikes(spikes_e, spikes_i; start=0, stop=0, xlabel="", ylabel="", title="", name="", color=(:grey, :grey), height=600)
+    spikes = vcat(spikes_e, spikes_i)
+    f, ax, ax1 = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, height=height, yticks=LinearTicks(size(spikes, 1)), call_ax2=false)
+    xlims!(ax, (start, stop))
+    size_e = size(spikes_e, 1)
+    spikes_x = spikes
+    int_range = 1:size(spikes, 1)
+    spikes_y = sol_to_spikes.(spikes, int_range)
+    x = spikes_x
+    y = spikes_y
+    for i in 1:size(x, 1)
+        dot_color = color[1]
+        if i > size_e
+            dot_color = color[2]
+        end
+        scatter!(ax, x[i], y[i]; color=dot_color, markersize=8)
+    end
+    f
+end
+
 end

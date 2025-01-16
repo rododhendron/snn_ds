@@ -44,13 +44,13 @@ function get_stim_params_skeleton()
         deviant_idx=2,
         p_deviant=0.2,
         n_trials=10,
-        isi=350.0,
-        duration=50.0,
+        isi=350.0e-3,
+        duration=50.0e-3,
         amplitude=5.0,
         onset_ramp=0.0,
         offset_ramp=0.0,
         select_size=0,
-        start_offset=200.0,
+        start_offset=200.0e-3,
     )
 end
 
@@ -64,7 +64,7 @@ function override_params(params, rules)
     )
 end
 
-function generate_schedule(params::ComponentVector)::Array{Float64, 2}
+function generate_schedule(params::ComponentVector)::Array{Float64,2}
     # generate sequence detecting paradigm case of deviant or many standard
     # output of shape : (t_start, onset_duration, group)
     if isnothing(params.deviant_idx)
@@ -80,10 +80,10 @@ function generate_schedule(params::ComponentVector)::Array{Float64, 2}
     stim_distribution = Categorical(prob_vector)
     stims = rand(stim_distribution, Int(params.n_trials))
 
-    schedule = Array{Float64, 2}(undef, 3, size(stims, 1))
+    schedule = Array{Float64,2}(undef, 3, size(stims, 1))
 
     for i in 1:size(stims, 1)
-        @inbounds schedule[1, i] = (i-1)*(params.isi + params.duration) + params.start_offset
+        @inbounds schedule[1, i] = (i - 1) * (params.isi + params.duration) + params.start_offset
         @inbounds schedule[2, i] = params.duration
         @inbounds schedule[3, i] = stims[i]
     end

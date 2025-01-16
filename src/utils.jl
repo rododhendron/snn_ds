@@ -4,7 +4,7 @@ using ModelingToolkit, DifferentialEquations, Symbolics, Transducers
 export ParamTree, fetch_tree, get_spike_timings, get_spikes_from_r
 
 mutable struct ParamNode
-    nodes::Vector{Union{ParamNode,Num}}
+    nodes::Vector{Union{ParamNode,Num,Nothing}}
     system::ODESystem
 end
 
@@ -22,6 +22,14 @@ end
 
 function instantiate_systems(model::Num)
     model
+end
+
+function instantiate_systems(model::Nothing)
+    nothing
+end
+
+function fetch_node(_, node::Nothing, _)
+    nothing
 end
 
 function fetch_node(path, node::Num, isin::Bool)
@@ -52,6 +60,7 @@ function fetch_node(path, node::ParamNode, isin::Bool)
 end
 
 function fetch_tree(path::Vector{String}, tree::ParamTree, isin::Bool=true)
+    # knowing required path, fetch specific matching param in tree
     fetch_node(path, tree.master_node, isin) |> Cat() |> Cat() |> Filter(!isnothing) |> collect
 end
 
@@ -89,6 +98,8 @@ function get_spike_timings(r_array::Matrix, sol)
     timings_vec
 end
 
-
+function hcat_sol_matrix(res, sol)
+    reduce(hcat, sol[res])
+end
 
 end
