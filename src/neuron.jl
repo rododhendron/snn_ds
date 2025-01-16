@@ -6,12 +6,21 @@ using PrecompileTools: @setup_workload, @compile_workload
 
 const start_input::Float64 = 200e-3
 # const input_duration::Float64 = 200e-3
-step_fn(t, iv, duration) = ifelse(start_input < t < start_input + duration, iv, 0)
 const dt_clamp = 5 # ms
 clock = Clock(dt_clamp)
 k = ShiftIndex(clock)
 
-@register_symbolic step_fn(t, iv, duration)
+function step_fn(t, iv, schedule, neuron_group)
+    # Vector of (t_start, duration, target)
+    t_range = searchsorted(schedule[1, :], t)
+    stim = schedule[:, t_range.start]
+    return ifelse(
+        (neuron_group == stim[3]) & (stim[1] <= t <= stim[1] + duration),
+        iv,
+        0
+    )
+end
+@register_symbolic step_fn(t, iv, schedule::Matrix, neuron_group)
 
 @mtkmodel Soma begin # AdEx neuron from https://journals.physiology.org/doi/pdf/10.1152/jn.00686.2005
     @variables begin
@@ -22,6 +31,9 @@ k = ShiftIndex(clock)
         Ib(t), [input = true]
         R(t), [output = true]
         # Rp(t), [output = true]
+    end
+    @structural_parameters begin
+        n_stims
     end
     @parameters begin
         Je
@@ -35,11 +47,13 @@ k = ShiftIndex(clock)
         TauW
         input_value
         duration
+        group
+        schedule[1:3, 1:n_stims]
     end
     @equations begin
         D(v) ~ (-Je * (v - vrest) + Je * delta * exp((v - vthr) / delta) - w + Ii + Ie + Ib) / Cm # voltage dynamic
         D(w) ~ (-w + a * (v - vrest)) / TauW # adaptation dynamic
-        Ib ~ step_fn(t, input_value, duration)
+        Ib ~ step_fn(t, input_value, schedule, group)
         D(R) ~ 0
     end
     # @continuous_events begin
@@ -98,6 +112,7 @@ function get_adex_neuron_params_skeleton(type::DataType)
         inc_gsyn=0.3e-9,    # Conductance value by which to increment when a synapse receive a spike (S)
         e_neuron_1__soma__input_value=0.80e-9, # input value specific to excitatory neuron 1
         duration=400e-3,    # Duration of the stimulus onset (s)
+        group=0,
     )
 end
 
@@ -130,8 +145,8 @@ function get_synapse_eq(_synapse_type::Nothing, post_neuron::ODESystem)::Nothing
     nothing
 end
 
-function make_neuron(params::ComponentArray, soma_model::Model, tspan::Tuple{Int,Int}, name::Symbol)::ODESystem
-    @named soma = soma_model(; name=Symbol("soma"))
+function make_neuron(params::ComponentArray, soma_model::Model, tspan::Tuple{Int,Int}, name::Symbol, schedule)::ODESystem
+    @named soma = soma_model(; name=Symbol("soma"), n_stims=size(schedule, 2), schedule=schedule)
     @named ampa_syn = SynapseAMPA(; name=Symbol("ampa_syn"))
     @named gabaa_syn = SynapseGABAa(; name=Symbol("gabaa_syn"))
 
@@ -177,6 +192,7 @@ function instantiate_connections(id_map, map_connect, post_neurons)::Vector{Pair
     all_callbacks
 end
 
+function infer_connection_from_map(neurons::Vector{ODESystem})
 function init_connection_map(e_neurons::Vector{ODESystem}, i_neurons::Vector{ODESystem}, connection_rules::Vector{ConnectionRule})
     rng = Xoshiro(123)
     neurons = vcat(e_neurons, i_neurons)
@@ -262,30 +278,30 @@ end
 
 @setup_workload begin
     @compile_workload begin
-        tspan = (0, 1)
-        params = get_adex_neuron_params_skeleton(Float64)
-        uparams = get_adex_neuron_uparams_skeleton(Float64)
-        i_neurons_n = 2
-        e_neurons_n = 2
-        i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)")) for i in 1:i_neurons_n]
-        e_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("e_neuron_$(i)")) for i in 1:e_neurons_n]
+        # tspan = (0, 1)
+        # params = get_adex_neuron_params_skeleton(Float64)
+        # uparams = get_adex_neuron_uparams_skeleton(Float64)
+        # i_neurons_n = 2
+        # e_neurons_n = 2
+        # i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)")) for i in 1:i_neurons_n]
+        # e_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("e_neuron_$(i)")) for i in 1:e_neurons_n]
 
-        ee_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.excitator, Neuron.AMPA(), 1.0)
-        ei_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.inhibitor, Neuron.AMPA(), 1.0)
-        ie_rule = Neuron.ConnectionRule(Neuron.inhibitor, Neuron.excitator, Neuron.GABAa(), 1.0)
+        # ee_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.excitator, Neuron.AMPA(), 1.0)
+        # ei_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.inhibitor, Neuron.AMPA(), 1.0)
+        # ie_rule = Neuron.ConnectionRule(Neuron.inhibitor, Neuron.excitator, Neuron.GABAa(), 1.0)
 
-        (id_map, map_connect) = Neuron.init_connection_map(e_neurons, i_neurons, vcat(ee_rule, ei_rule, ie_rule))
-        connections = Neuron.instantiate_connections(id_map, map_connect, vcat(e_neurons, i_neurons))
+        # (id_map, map_connect) = Neuron.init_connection_map(e_neurons, i_neurons, vcat(ee_rule, ei_rule, ie_rule))
+        # connections = Neuron.instantiate_connections(id_map, map_connect, vcat(e_neurons, i_neurons))
 
-        network = Neuron.make_network(vcat(e_neurons, i_neurons), connections)
+        # network = Neuron.make_network(vcat(e_neurons, i_neurons), connections)
 
-        simplified_model = structural_simplify(network, split=false)
+        # simplified_model = structural_simplify(network, split=false)
 
-        iparams, iuparams = Neuron.map_params(simplified_model, params, uparams; match_nums=false)
+        # iparams, iuparams = Neuron.map_params(simplified_model, params, uparams; match_nums=false)
 
-        prob = ODEProblem(simplified_model, iuparams, tspan, iparams)
+        # prob = ODEProblem(simplified_model, iuparams, tspan, iparams)
 
-        solve(prob, Vern6(); abstol=1e-6, reltol=1e-6)
+        # solve(prob, Vern6(); abstol=1e-6, reltol=1e-6)
     end
 end
 end

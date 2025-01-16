@@ -41,15 +41,16 @@ end
 function get_stim_params_skeleton()
     ComponentVector(
         standard_idx=1,
-        deviant_idx=4,
-        p_deviant=0.0,
+        deviant_idx=2,
+        p_deviant=0.2,
         n_trials=10,
         isi=350.0,
         duration=50.0,
         amplitude=5.0,
         onset_ramp=0.0,
         offset_ramp=0.0,
-        select_size=1
+        select_size=0,
+        start_offset=200.0,
     )
 end
 
@@ -63,31 +64,33 @@ function override_params(params, rules)
     )
 end
 
-function generate_sequence(params::ComponentVector)
+function generate_schedule(params::ComponentVector)::Array{Float64, 2}
     # generate sequence detecting paradigm case of deviant or many standard
-    if isnothing(deviant_idx)
-        n_stim = len(params.standard_idx)
-        target_prob = 1 / n_standards
+    # output of shape : (t_start, onset_duration, group)
+    if isnothing(params.deviant_idx)
+        n_standard = len(params.standard_idx)
+        target_prob = 1 / n_standard
         prob_vector = fill(target_prop, n_stim)
     else
         n_stim = 2
-        target_prob = p_deviant
+        target_prob = params.p_deviant
         prob_vector = [target_prob, 1 - target_prob]
     end
 
-    stim_distribution = Multinomial(n_stim, prob_vector)
-    stims = rand(stim_distribution, params.n_trials)
+    stim_distribution = Categorical(prob_vector)
+    stims = rand(stim_distribution, Int(params.n_trials))
 
-    if !isnothing(deviant_idx)
-        scan_stims = stims[2:end] |> ScanEmit(
-                         (prev, x) -> (prev == x == deviant_idx ? 1 : 0, x),
-                         first(stims)
-                     ) |> collect |> out_vec -> vcat(0, out_vec)
-        idx_to_replace = findall(scan_stims)
-        stims[idx_to_replace] .= standard_idx
-        return stims
+    schedule = Array{Float64, 2}(undef, 3, size(stims, 1))
+
+    for i in 1:size(stims, 1)
+        @inbounds schedule[1, i] = (i-1)*(params.isi + params.duration) + params.start_offset
+        @inbounds schedule[2, i] = params.duration
+        @inbounds schedule[3, i] = stims[i]
     end
-    return stims
+
+    @show stims
+    @show schedule
+    return schedule
 end
 
 function get_input_neuron_index(idx_loc::NTuple, neurons, select_size)
@@ -110,7 +113,6 @@ capture_neuron_id(neuron::ModelingToolkit.ODESystem)::Int = match(r"[ei]_neuron_
         ids = Array{Int}(undef, size(neurons)[1:N]...)
         @nloops $N i neurons begin
             obj = @nref $N neurons i
-            @show obj.name
             ids[(@ntuple $N i)...] = capture_neuron_id(obj)
         end
         ids
@@ -119,14 +121,15 @@ end
 
 function make_input_rule_neurons(neuron_groups, input_value)
     rules_target = 1:size(neuron_groups, 1) |> Map(i -> make_rule("e_neuron", fetch_neuron_ids(neuron_groups[i]), "soma__input_value", input_value)) |> collect
+    rules_group = 1:size(neuron_groups, 1) |> Map(i -> make_rule("e_neuron", fetch_neuron_ids(neuron_groups[i]), "soma__group", i)) |> collect
+    return [rules_target...; rules_group...]
 end
 
 function update_neurons_rules_from_sequence(neurons, stims_params, network_params)
     # update iv value in neurons
     stims_loc = isnothing(stims_params.deviant_idx) ? stims_params.standard_idx : [stims_params.standard_idx, stims_params.deviant_idx]
     input_neurons_groups = [get_input_neuron_index((idx_loc,), neurons, stims_params.select_size) for idx_loc in stims_loc]
-    @show input_neurons_groups[1] .|> x -> x.name
 
-    rules = [make_input_rule_neurons(input_neurons_groups, stims_params.amplitude)]
+    rules = make_input_rule_neurons(input_neurons_groups, stims_params.amplitude)
 end
 end

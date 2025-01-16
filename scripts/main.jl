@@ -8,8 +8,7 @@ include("../src/device.jl")
 
 using Symbolics, ModelingToolkit, DifferentialEquations, ComponentArrays, LinearAlgebra, LinearSolve
 
-using .Neuron
-using .Utils, .Plots, .Device
+using SNN
 
 # gpu = to_device_fn()
 gpu = x -> x
@@ -19,10 +18,14 @@ n_neurons = 10
 i_neurons_n = floor(n_neurons * 0.8)
 e_neurons_n = n_neurons - i_neurons_n
 
+
 # @time params = Neuron.AdExNeuronParams()
-@time params = Neuron.get_adex_neuron_params_skeleton(Float64)
-@time i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)")) for i in 1:i_neurons_n]
-@time e_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("e_neuron_$(i)")) for i in 1:e_neurons_n]
+@time params = SNN.Neuron.get_adex_neuron_params_skeleton(Float64)
+# make schedule
+stim_params = SNN.Params.get_stim_params_skeleton()
+schedule = SNN.Params.generate_schedule()
+@time i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)"), schedule) for i in 1:i_neurons_n]
+@time e_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("e_neuron_$(i)"), schedule) for i in 1:e_neurons_n]
 
 ee_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.excitator, Neuron.AMPA(), 0.05)
 ei_rule = Neuron.ConnectionRule(Neuron.excitator, Neuron.inhibitor, Neuron.AMPA(), 0.05)
