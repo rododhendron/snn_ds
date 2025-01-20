@@ -53,9 +53,10 @@ function sol_to_spikes(spikes_x_vec::Vector, y_value)::Vector
     spikes_in_window = spikes_values * y_value
 end
 
-function plot_spikes((spikes_e, spikes_i); start=0, stop=0, xlabel="", ylabel="", title="", name="", color=(:grey, :grey), height=600, tofile=true)
+function plot_spikes((spikes_e, spikes_i); start=0, stop=0, xlabel="", ylabel="", title="", name="", color=(:grey, :grey), height=Makie.automatic, tofile=true)
     spikes = vcat(spikes_e, spikes_i)
-    yticks = size(spikes, 1) > 0 ? LinearTicks(size(spikes, 1)) : Makie.automatic
+    @show size(spikes, 1)
+    yticks = size(spikes, 1) > 0 ? (1:size(spikes, 1)) : Makie.automatic
     f, ax, ax1 = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, height=height, yticks=yticks, call_ax2=false)
     xlims!(ax, (start, stop))
     size_e = size(spikes_e, 1)
