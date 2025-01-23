@@ -2,6 +2,8 @@ module Plots
 
 using CairoMakie, ComponentArrays
 using CairoMakie: Axis
+using Makie.GeometryBasics
+using Transducers
 
 using ..Utils
 
@@ -25,14 +27,22 @@ function make_fig(; xlabel="", ylabel="", title="", height=700, width=1600, ytic
         ax_stims = Axis(f[2, 1],
         )
         linkxaxes!(ax1, ax_stims)
-        recs = [Rect(1, start, 0.2, 0.2) for start in schedule[2, :]]
+        recs = [Rect(stim[1], 1, stim[2], stim[2]) for stim in eachcol(schedule)]
+        # schedule is (t_starts, onset_period, idx_target)
+        stim_polys = poly!(ax_stims, recs, color=Int.(schedule[3, :]), colormap=Makie.Categorical(:rainbow))
+        unique_stim = Int.(unique(schedule[3, :]))
+        cbar = Colorbar(f[2, 2], stim_polys, label="Stimuli class")#, colormap=cgrad(:rainbow, categorical=true))
+        nticks = size(unique_stim, 1)
+        ticks = -1:2/nticks:1 |> Consecutive(2; step=1) |> Map(x -> x[1]+(x[2] - x[1])/2) |> collect # make ticks evenly distributed along y axis
+        rowsize!(f.layout, 2, 30)
+        hideydecorations!(ax_stims)
     else
         ax_stims = nothing
     end
     if call_ax2
         ax2 = Axis(f[1, 1],
             yaxisposition=:right,
-            ylabel="input_current, in A"
+            ylabel="input_current, in A",
         )
         linkxaxes!(ax1, ax2)
         (f, ax1, ax2, ax_stims)
@@ -42,8 +52,8 @@ function make_fig(; xlabel="", ylabel="", title="", height=700, width=1600, ytic
 end
 
 
-function plot_neuron_value(time, value, p, input_current, offset; start=0, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false)
-    f, ax, ax2, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title)
+function plot_neuron_value(time, value, p, input_current, offset; start=0, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false, schedule=[])
+    f, ax, ax2, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, schedule=schedule, plot_stims=true)
     sliced_time, sliced_value = get_slice_xy(time, value, start=start, stop=stop)
     is_voltage ? hlines!(ax, [p.vthr, p.vrest]; color=1:2) : nothing
     vlines!(ax, [offset]; color=:grey, linestyle=:dashdot)
@@ -61,11 +71,11 @@ function sol_to_spikes(spikes_x_vec::Vector, y_value)::Vector
     spikes_in_window = spikes_values * y_value
 end
 
-function plot_spikes((spikes_e, spikes_i); start=0, stop=0, xlabel="", ylabel="", title="", name="", color=(:grey, :grey), height=Makie.automatic, tofile=true)
+function plot_spikes((spikes_e, spikes_i); start=0, stop=0, xlabel="", ylabel="", title="", name="", color=(:grey, :grey), height=Makie.automatic, tofile=true, schedule=[])
     spikes = vcat(spikes_e, spikes_i)
     @show size(spikes, 1)
     yticks = size(spikes, 1) > 0 ? (1:size(spikes, 1)) : Makie.automatic
-    f, ax, ax1, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, height=height, yticks=yticks, call_ax2=false)
+    f, ax, ax1, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, height=height, yticks=yticks, call_ax2=false, schedule=schedule, plot_stims=true)
     xlims!(ax, (start, stop))
     size_e = size(spikes_e, 1)
     spikes_x = spikes
@@ -84,19 +94,20 @@ function plot_spikes((spikes_e, spikes_i); start=0, stop=0, xlabel="", ylabel=""
 end
 
 fetch_tree_neuron_value(neuron_type::String, i::Int, val::String, tree::ParamTree) = fetch_tree(["$(neuron_type)_$i", val], tree::ParamTree, false) |> first
-function plot_excitator_value(i, sol, start, stop, name_interpol, tree::ParamTree, offset)
+function plot_excitator_value(i, sol, start, stop, name_interpol, tree::ParamTree, offset, schedule)
     @show i
     e_v = fetch_tree_neuron_value("e_neuron", i, "v", tree)
     e_Ib = fetch_tree_neuron_value("e_neuron", i, "Ib", tree)
     e_vtarget = fetch_tree_neuron_value("e_neuron", i, "vtarget_exc", tree)
     e_vrest = fetch_tree_neuron_value("e_neuron", i, "vrest", tree)
     ps = ComponentVector(vtarget=e_vtarget, v_rest=e_vrest)
-    Plots.plot_neuron_value(sol.t, sol[e_v], ps, sol[e_Ib], offset; start=start, stop=stop, title="voltage of e $i", name=name_interpol("voltage_e_$i.png"))
+    Plots.plot_neuron_value(sol.t, sol[e_v], ps, sol[e_Ib], offset; start=start, stop=stop, title="voltage of e $i", name=name_interpol("voltage_e_$i.png"), schedule=schedule)
 end
-function plot_adaptation_value(i, sol, start, stop, name_interpol, tree::ParamTree, offset)
+function plot_adaptation_value(i, sol, start, stop, name_interpol, tree::ParamTree, offset, schedule)
     @show i
     e_w = fetch_tree_neuron_value("e_neuron", i, "w", tree)
-    Plots.plot_neuron_value(sol.t, sol[e_w], nothing, sol[e_w], offset; start=start, stop=stop, title="voltage of e $i", name=name_interpol("voltage_e_$i.png"), is_voltage=false)
+    e_Ib = fetch_tree_neuron_value("e_neuron", i, "Ib", tree)
+    Plots.plot_neuron_value(sol.t, sol[e_w], nothing, sol[e_Ib], offset; start=start, stop=stop, title="voltage of e $i", name=name_interpol("adaptation_e_$i.png"), schedule=schedule, is_voltage=false)
 end
 
 end

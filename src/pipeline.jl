@@ -74,21 +74,19 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
 
 
     for i in 1:e_neurons_n
-        @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset)
-        @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset)
+        @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, schedule)
+        @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, schedule)
     end
 
     res = Utils.fetch_tree(["e_neuron", "R"], tree)
-    @show res
     ma = Utils.hcat_sol_matrix(res, sol)
     spikes_times = Utils.get_spike_timings(ma, sol)
-    @show spikes_times
     Utils.write_params(params; name=name_interpol("params.yaml"))
     Utils.write_params(stim_params; name=name_interpol("stim_params.yaml"))
     Utils.write_params(iparams; name=name_interpol("iparams.yaml"))
     Utils.write_params(iuparams; name=name_interpol("iuparams.yaml"))
     Utils.write_sol(sol; name=name_interpol("sol.jld2"))
-    Plots.plot_spikes((spikes_times, []); start=start, stop=stop, color=(:red, :blue), height=400, title="Network activity", xlabel="time (in s)", ylabel="neuron index", name=name_interpol("rs.png"))
+    Plots.plot_spikes((spikes_times, []); start=start, stop=stop, color=(:red, :blue), height=400, title="Network activity", xlabel="time (in s)", ylabel="neuron index", name=name_interpol("rs.png"), schedule=schedule)
     (sol, simplified_model, prob)
 end
 
