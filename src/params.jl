@@ -41,7 +41,7 @@ end
 function get_stim_params_skeleton()
     ComponentVector(
         standard_idx=1,
-        deviant_idx=2,
+        deviant_idx=5,
         p_deviant=0.2,
         n_trials=10,
         isi=350.0e-3,

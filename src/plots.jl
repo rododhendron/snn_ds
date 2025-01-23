@@ -12,7 +12,7 @@ function get_slice_xy(x, y; start=0, stop=0)
     (x[first_x_idx:last_x_idx], y[first_x_idx:last_x_idx])
 end
 
-function make_fig(; xlabel="", ylabel="", title="", height=700, width=1600, yticks=Makie.automatic, call_ax2=true)
+function make_fig(; xlabel="", ylabel="", title="", height=700, width=1600, yticks=Makie.automatic, call_ax2=true, plot_stims=false, schedule=[])
     f = Figure(size=(width, height))
     ax1 = Axis(f[1, 1],
         title=title,
@@ -21,21 +21,29 @@ function make_fig(; xlabel="", ylabel="", title="", height=700, width=1600, ytic
         yticks=yticks,
         xticks=Makie.automatic
     )
+    if plot_stims
+        ax_stims = Axis(f[2, 1],
+        )
+        linkxaxes!(ax1, ax_stims)
+        recs = [Rect(1, start, 0.2, 0.2) for start in schedule[2, :]]
+    else
+        ax_stims = nothing
+    end
     if call_ax2
         ax2 = Axis(f[1, 1],
             yaxisposition=:right,
             ylabel="input_current, in A"
         )
         linkxaxes!(ax1, ax2)
-        (f, ax1, ax2)
+        (f, ax1, ax2, ax_stims)
     else
-        (f, ax1, nothing)
+        (f, ax1, nothing, ax_stims)
     end
 end
 
 
 function plot_neuron_value(time, value, p, input_current, offset; start=0, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false)
-    f, ax, ax2 = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title)
+    f, ax, ax2, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title)
     sliced_time, sliced_value = get_slice_xy(time, value, start=start, stop=stop)
     is_voltage ? hlines!(ax, [p.vthr, p.vrest]; color=1:2) : nothing
     vlines!(ax, [offset]; color=:grey, linestyle=:dashdot)
@@ -57,7 +65,7 @@ function plot_spikes((spikes_e, spikes_i); start=0, stop=0, xlabel="", ylabel=""
     spikes = vcat(spikes_e, spikes_i)
     @show size(spikes, 1)
     yticks = size(spikes, 1) > 0 ? (1:size(spikes, 1)) : Makie.automatic
-    f, ax, ax1 = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, height=height, yticks=yticks, call_ax2=false)
+    f, ax, ax1, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, height=height, yticks=yticks, call_ax2=false)
     xlims!(ax, (start, stop))
     size_e = size(spikes_e, 1)
     spikes_x = spikes
@@ -84,6 +92,11 @@ function plot_excitator_value(i, sol, start, stop, name_interpol, tree::ParamTre
     e_vrest = fetch_tree_neuron_value("e_neuron", i, "vrest", tree)
     ps = ComponentVector(vtarget=e_vtarget, v_rest=e_vrest)
     Plots.plot_neuron_value(sol.t, sol[e_v], ps, sol[e_Ib], offset; start=start, stop=stop, title="voltage of e $i", name=name_interpol("voltage_e_$i.png"))
+end
+function plot_adaptation_value(i, sol, start, stop, name_interpol, tree::ParamTree, offset)
+    @show i
+    e_w = fetch_tree_neuron_value("e_neuron", i, "w", tree)
+    Plots.plot_neuron_value(sol.t, sol[e_w], nothing, sol[e_w], offset; start=start, stop=stop, title="voltage of e $i", name=name_interpol("voltage_e_$i.png"), is_voltage=false)
 end
 
 end

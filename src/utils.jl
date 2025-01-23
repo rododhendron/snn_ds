@@ -1,5 +1,7 @@
 module Utils
-using ModelingToolkit, DifferentialEquations, Symbolics, Transducers
+using ComponentArrays: ComponentVecOrMat
+using ModelingToolkit, DifferentialEquations, Symbolics, Transducers, YAML
+using ComponentArrays, JLD2
 
 export ParamTree, fetch_tree, get_spike_timings, get_spikes_from_r
 
@@ -100,6 +102,24 @@ end
 
 function hcat_sol_matrix(res, sol)
     reduce(hcat, sol[res])
+end
+
+function write_params(params; name)
+    YAML.write_file(name, Dict(params))
+end
+
+function write_params(components::ComponentVecOrMat; name)
+    params_values = getindex.(Ref(components), labels(components))
+    params = Dict(zip(labels(components), params_values))
+    YAML.write_file(name, params)
+end
+
+function write_params(params::Dict; name)
+    YAML.write_file(name, params)
+end
+
+function write_sol(sol; name)
+    @save name sol
 end
 
 end

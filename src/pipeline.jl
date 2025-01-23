@@ -7,7 +7,10 @@ using ..Neuron
 using ..Utils
 using ..Plots
 
-function run_exp(exp_name; e_neurons_n=0, i_neurons_n=0, params, stim_params, tspan, con_mapping=nothing, prob_con=(0.05, 0.05, 0.05, 0.05), remake_prob=nothing)
+function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_params, tspan, con_mapping=nothing, prob_con=(0.05, 0.05, 0.05, 0.05), remake_prob=nothing)
+    path = path_prefix * name * "/"
+    mkpath(path)
+    exp_name = path * name
     schedule = Params.generate_schedule(stim_params, tspan)
     @time e_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("e_neuron_$(i)"), schedule) for i in 1:e_neurons_n]
     @time i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)"), schedule) for i in 1:i_neurons_n]
@@ -65,13 +68,14 @@ function run_exp(exp_name; e_neurons_n=0, i_neurons_n=0, params, stim_params, ts
     (start, stop) = tspan
 
     name_prefix = exp_name * ""
-    name_interpol(name) = name_prefix * name
+    name_interpol(name) = name_prefix * "_" * name
 
     println("plotting")
 
 
     for i in 1:e_neurons_n
         @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset)
+        @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset)
     end
 
     res = Utils.fetch_tree(["e_neuron", "R"], tree)
@@ -79,6 +83,11 @@ function run_exp(exp_name; e_neurons_n=0, i_neurons_n=0, params, stim_params, ts
     ma = Utils.hcat_sol_matrix(res, sol)
     spikes_times = Utils.get_spike_timings(ma, sol)
     @show spikes_times
+    Utils.write_params(params; name=name_interpol("params.yaml"))
+    Utils.write_params(stim_params; name=name_interpol("stim_params.yaml"))
+    Utils.write_params(iparams; name=name_interpol("iparams.yaml"))
+    Utils.write_params(iuparams; name=name_interpol("iuparams.yaml"))
+    Utils.write_sol(sol; name=name_interpol("sol.jld2"))
     Plots.plot_spikes((spikes_times, []); start=start, stop=stop, color=(:red, :blue), height=400, title="Network activity", xlabel="time (in s)", ylabel="neuron index", name=name_interpol("rs.png"))
     (sol, simplified_model, prob)
 end
