@@ -16,9 +16,9 @@ e_neurons_n = 3
 # @time params = Neuron.AdExNeuronParams()
 @time params = SNN.Neuron.get_adex_neuron_params_skeleton(Float64)
 params.inc_gsyn = 60e-9
-params.a = 120.0e-9          # Subthreshold adaptation (A)
+params.a = 160.0e-9          # Subthreshold adaptation (A)
 params.b = 10e-9          # Spiking adaptation (A)
-params.TauW = 644.0e-3      # Adaptation time constant (s)
+params.TauW = 1244.0e-3      # Adaptation time constant (s)
 # make schedule
 stim_params = SNN.Params.get_stim_params_skeleton()
 # stim_params.n_trials = 20
