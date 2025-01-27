@@ -6,6 +6,8 @@ using Distributions
 using Transducers
 using ModelingToolkit
 
+export connect_neurons
+
 function get_model_params(Je=10, delta=2, vthr=-50, Cm=200, vrest=-65, TauW=500, w0=0, a=6)# model params
     mparams = SLVector((
         Je=10,
@@ -75,7 +77,7 @@ function generate_schedule(params::ComponentVector, tspan::Tuple{Int,Int})::Arra
     else
         n_stim = 2
         target_prob = params.p_deviant
-        prob_vector = [target_prob, 1 - target_prob]
+        prob_vector = [1 - target_prob, target_prob]
     end
 
     stim_distribution = Categorical(prob_vector)
@@ -119,16 +121,48 @@ capture_neuron_id(neuron::ModelingToolkit.ODESystem)::Int = match(r"[ei]_neuron_
 end
 
 function make_input_rule_neurons(neuron_groups, input_value)
-    rules_target = 1:size(neuron_groups, 1) |> Map(i -> make_rule("e_neuron", fetch_neuron_ids(neuron_groups[i]), "soma__input_value", input_value)) |> collect
-    rules_group = 1:size(neuron_groups, 1) |> Map(i -> make_rule("e_neuron", fetch_neuron_ids(neuron_groups[i]), "soma__group", i)) |> collect
+    rules_target = []
+    rules_group = []
+    for (idx_loc, neuron_group) in neuron_groups
+        push!(rules_target, make_rule("e_neuron", fetch_neuron_ids(neuron_group), "soma__input_value", input_value))
+        push!(rules_target, make_rule("e_neuron", fetch_neuron_ids(neuron_group), "soma__group", idx_loc))
+    end
     return [rules_target...; rules_group...]
 end
 
 function update_neurons_rules_from_sequence(neurons, stims_params, network_params)
     # update iv value in neurons
     stims_loc = isnothing(stims_params.deviant_idx) ? stims_params.standard_idx : [stims_params.standard_idx, stims_params.deviant_idx]
-    input_neurons_groups = [get_input_neuron_index((idx_loc,), neurons, stims_params.select_size) for idx_loc in stims_loc]
+    input_neurons_groups = [(idx_loc, get_input_neuron_index((idx_loc,), neurons, stims_params.select_size)) for idx_loc in stims_loc]
 
     rules = make_input_rule_neurons(input_neurons_groups, stims_params.amplitude)
+    (input_neurons_groups, rules)
+end
+
+macro connect_neurons(pre_neurons, prob, synapse, post_neurons)
+    # Generate the code
+    quote
+        local connections_set = []
+        for pre_neuron in $pre_neurons
+            for post_neuron in $post_neurons
+                if rand() < $prob
+                    push!(connections_set, (pre_neuron, post_neuron, $synapse))
+                end
+            end
+        end
+        connections_set
+    end |> esc
+end
+macro connect_neurons(pre_neurons, synapse, post_neurons)
+    # Generate the code
+    quote
+        local connections_set = []
+        for pre_neuron in $pre_neurons
+            for post_neuron in $post_neurons
+                push!(connections_set, (pre_neuron, post_neuron, $synapse))
+            end
+        end
+        connections_set
+    end |> esc
 end
 end

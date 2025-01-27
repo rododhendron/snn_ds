@@ -1,6 +1,6 @@
 module Pipeline
 
-using Symbolics, ModelingToolkit, DifferentialEquations, ComponentArrays, LinearAlgebra, LinearSolve
+using Symbolics, ModelingToolkit, DifferentialEquations, ComponentArrays, LinearAlgebra, LinearSolve, SciMLBase
 
 using ..Params
 using ..Neuron
@@ -11,11 +11,15 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
     path = path_prefix * name * "/"
     mkpath(path)
     exp_name = path * name
-    schedule = Params.generate_schedule(stim_params, tspan)
-    @time e_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("e_neuron_$(i)"), schedule) for i in 1:e_neurons_n]
-    @time i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)"), schedule) for i in 1:i_neurons_n]
+    stim_schedule = Params.generate_schedule(stim_params, tspan)
+    @time e_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("e_neuron_$(i)"), stim_schedule) for i in 1:e_neurons_n]
+    @time i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)"), stim_schedule) for i in 1:i_neurons_n]
 
-    rules = Params.update_neurons_rules_from_sequence(e_neurons, stim_params, params)
+    (input_neurons, rules) = Params.update_neurons_rules_from_sequence(e_neurons, stim_params, params)
+    (input_grp, input_neuron_vec) = zip(input_neurons...)
+    input_neurons_name = [neuron.name for neuron in [input_neuron_vec...;]]
+    @show input_grp
+    @show input_neurons_name
     overriden_params = Params.override_params(params, rules)
     if !isnothing(con_mapping)
         (id_map, map_connect) = Neuron.infer_connection_from_map(e_neurons, con_mapping)
@@ -49,8 +53,6 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
     @time sol = solve(prob, KenCarp47(linsolve=KrylovJL_GMRES()); abstol=1e-4, reltol=1e-4, dtmax=1e-3)
     # @time sol = solve(prob, Rodas5P(); abstol=1e-6, reltol=1e-6)
 
-    @show sol.stats
-
     @time tree::Utils.ParamTree = Utils.make_param_tree(simplified_model)
 
     println("tree fetch...")
@@ -74,8 +76,8 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
 
 
     for i in 1:e_neurons_n
-        @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, schedule)
-        @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, schedule)
+        @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule)
+        @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule)
     end
 
     res = Utils.fetch_tree(["e_neuron", "R"], tree)
@@ -85,11 +87,48 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
     Utils.write_params(stim_params; name=name_interpol("stim_params.yaml"))
     Utils.write_params(iparams; name=name_interpol("iparams.yaml"))
     Utils.write_params(iuparams; name=name_interpol("iuparams.yaml"))
-    Utils.write_sol(sol; name=name_interpol("sol.jld2"))
-    Plots.plot_spikes((spikes_times, []); start=start, stop=stop, color=(:red, :blue), height=400, title="Network activity", xlabel="time (in s)", ylabel="neuron index", name=name_interpol("rs.png"), schedule=schedule)
+    sol_stripped = SciMLBase.strip_solution(sol)
+    Utils.write_sol(sol_stripped; name=name_interpol("sol.jld2"))
+    Plots.plot_spikes((spikes_times, []); start=start, stop=stop, color=(:red, :blue), height=400, title="Network activity", xlabel="time (in s)", ylabel="neuron index", name=name_interpol("rs.png"), schedule=stim_schedule)
+
+    @time groups = Utils.fetch_tree(["e_neuron", "group"], tree)
+    stim_groups = !isnothing(stim_params.deviant_idx) ? [stim_params.standard_idx; stim_params.deviant_idx] : stim_params.standard_idx
+
+    results = Dict()
+
+    if !isnothing(stim_params.deviant_idx)
+        standards = [stim[1] for stim in eachcol(stim_schedule) if stim[3] in stim_params.standard_idx]
+        deviants = [stim[1] for stim in eachcol(stim_schedule) if stim[3] in stim_params.deviant_idx]
+        #readout |> count dev on standard |> ok
+
+        readouts = [neuron for neuron in e_neurons if neuron.name ∉ input_neurons_name]
+        # I have one for now so take first
+
+        readout = first(readouts) |> x -> Utils.fetch_tree([String(x.name), "R"], tree)
+        mr = Utils.hcat_sol_matrix(readout, sol)
+        spikes_readout = Utils.get_spike_timings(mr, sol) |> first # take first as I have one readout
+
+        window = 70e-3 # time in ms
+        dev_match = Utils.get_matching_timings(deviants, spikes_readout, window)
+        standard_match = Utils.get_matching_timings(standards, spikes_readout, window)
+
+        dev_count = count(i -> i > 0, dev_match)
+        standard_count = count(i -> i > 0, standard_match)
+
+        results["deviant_proportion"] = dev_count / size(deviants, 1)
+        results["standard_proportion"] = standard_count / size(standards, 1)
+        tpnp = dev_count + size(standards, 1) - standard_count
+        accuracy = tpnp / size(stim_schedule, 2)
+        f1_score = 2 * dev_count / (2 * dev_count + standard_count + size(deviants, 1) - dev_count)
+        results["f1_score"] = f1_score
+        results["accuracy"] = accuracy
+    end
+
+    @show results
+    Utils.write_params(results; name=name_interpol("result_metrics.yaml"))
+
     (sol, simplified_model, prob)
 end
-
 
 
 end

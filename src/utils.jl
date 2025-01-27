@@ -61,7 +61,7 @@ function fetch_node(path, node::ParamNode, isin::Bool)
     end
 end
 
-function fetch_tree(path::Vector{String}, tree::ParamTree, isin::Bool=true)
+function fetch_tree(path::Vector{String}, tree::ParamTree, isin::Bool=true) # isin lets us match exactly specified numerical value
     # knowing required path, fetch specific matching param in tree
     fetch_node(path, tree.master_node, isin) |> Cat() |> Cat() |> Filter(!isnothing) |> collect
 end
@@ -120,6 +120,12 @@ end
 
 function write_sol(sol; name)
     @save name sol
+end
+
+function get_matching_timings(stims::Vector, spikes::Vector, window::Float64)
+    @show stims
+    @show spikes
+    stims |> Map(x -> count(i -> x < i < x + window, spikes)) |> collect
 end
 
 end
