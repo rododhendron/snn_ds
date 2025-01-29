@@ -43,15 +43,15 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
     @time iparams, iuparams = Neuron.map_params(simplified_model, overriden_params, uparams; match_nums=true)
 
     if isnothing(remake_prob)
-        @time prob = ODEProblem{true}(simplified_model, iuparams, tspan, iparams, sparse=true)
+        @time prob = ODEProblem{true}(simplified_model, iuparams, tspan, iparams)#, sparse=true)
     else
         @time prob = remake(remake_prob; u0=iuparams, p=iparams)
     end
 
     println("Solving...")
     # @time sol = solve(prob, ImplicitDeuflhardExtrapolation(threading=true); abstol=1e-3, reltol=1e-3)
-    @time sol = solve(prob, KenCarp47(linsolve=KrylovJL_GMRES()); abstol=1e-4, reltol=1e-4, dtmax=1e-3)
-    # @time sol = solve(prob, Rodas5P(); abstol=1e-6, reltol=1e-6)
+    # @time sol = solve(prob, KenCarp47(linsolve=KrylovJL_GMRES()); abstol=1e-4, reltol=1e-4, dtmax=1e-3)
+    @time sol = solve(prob, Rodas5P(); abstol=1e-6, reltol=1e-6)
 
     @time tree::Utils.ParamTree = Utils.make_param_tree(simplified_model)
 
@@ -87,8 +87,8 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
     Utils.write_params(stim_params; name=name_interpol("stim_params.yaml"))
     Utils.write_params(iparams; name=name_interpol("iparams.yaml"))
     Utils.write_params(iuparams; name=name_interpol("iuparams.yaml"))
-    sol_stripped = SciMLBase.strip_solution(sol)
-    Utils.write_sol(sol_stripped; name=name_interpol("sol.jld2"))
+    # sol_stripped = SciMLBase.strip_solution(sol)
+    Utils.write_sol(sol; name=name_interpol("sol.jld2"))
     Plots.plot_spikes((spikes_times, []); start=start, stop=stop, color=(:red, :blue), height=400, title="Network activity", xlabel="time (in s)", ylabel="neuron index", name=name_interpol("rs.png"), schedule=stim_schedule)
 
     @time groups = Utils.fetch_tree(["e_neuron", "group"], tree)
