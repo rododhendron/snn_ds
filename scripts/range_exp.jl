@@ -9,12 +9,12 @@ using Symbolics, ModelingToolkit, DifferentialEquations, ComponentArrays, Linear
 # gpu = to_device_fn()
 gpu = x -> x
 
-tspan = (0, 100)
+tspan = (0, 30)
 
 # e_neurons_n = 5
 
-param_range = 3.0e-8:1e-8:7e-8
-param_to_change = :a
+param_range = 10e-9:20e-9:100e-9
+param_to_change = :Je
 
 for param_i in param_range
     # @time params = Neuron.AdExNeuronParams()
@@ -33,7 +33,7 @@ for param_i in param_range
     stim_params.standard_idx = 1
     stim_params.p_deviant = 0.1
 
-    params[param_to_change]
+    params[param_to_change] = param_i
 
     # id_map struct = (id of neuron to map in connections, neuron)
     # connections shape = (n_neurons, n_neurons)

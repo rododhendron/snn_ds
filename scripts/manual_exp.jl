@@ -9,7 +9,7 @@ using Symbolics, ModelingToolkit, DifferentialEquations, ComponentArrays, Linear
 # gpu = to_device_fn()
 gpu = x -> x
 
-tspan = (0, 60)
+tspan = (0, 200)
 
 # e_neurons_n = 5
 

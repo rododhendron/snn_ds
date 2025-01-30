@@ -1,6 +1,7 @@
 module Pipeline
 
 using Symbolics, ModelingToolkit, DifferentialEquations, ComponentArrays, LinearAlgebra, LinearSolve, SciMLBase
+using Random
 
 using ..Params
 using ..Neuron
@@ -8,6 +9,7 @@ using ..Utils
 using ..Plots
 
 function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_params, tspan, con_mapping=nothing, prob_con=(0.05, 0.05, 0.05, 0.05), remake_prob=nothing)
+    Random.seed!(1234)
     path = path_prefix * name * "/"
     mkpath(path)
     exp_name = path * name
@@ -50,8 +52,8 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
 
     println("Solving...")
     # @time sol = solve(prob, ImplicitDeuflhardExtrapolation(threading=true); abstol=1e-3, reltol=1e-3)
-    # @time sol = solve(prob, KenCarp47(linsolve=KrylovJL_GMRES()); abstol=1e-4, reltol=1e-4, dtmax=1e-3)
-    @time sol = solve(prob, Rodas5P(); abstol=1e-6, reltol=1e-6)
+    @time sol = solve(prob, KenCarp47(linsolve=KrylovJL_GMRES()); abstol=1e-4, reltol=1e-4, dtmax=1e-3)
+    # @time sol = solve(prob, Rodas5P(); abstol=1e-6, reltol=1e-6)
 
     @time tree::Utils.ParamTree = Utils.make_param_tree(simplified_model)
 

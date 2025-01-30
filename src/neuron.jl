@@ -204,7 +204,6 @@ function infer_connection_from_map(neurons::Vector{ODESystem}, mapping)
     (id_map, map_connect)
 end
 function init_connection_map(e_neurons::Vector{ODESystem}, i_neurons::Vector{ODESystem}, connection_rules::Vector{ConnectionRule})
-    rng = Xoshiro(123)
     neurons = vcat(e_neurons, i_neurons)
     n_neurons = length(e_neurons) + length(i_neurons)
     id_map = [(i, neurons[i]) for i in 1:n_neurons]
@@ -213,7 +212,7 @@ function init_connection_map(e_neurons::Vector{ODESystem}, i_neurons::Vector{ODE
         pre_neurons_ids = rule.pre_neurons_type == excitator ? range(1, length(e_neurons)) : range(length(e_neurons) + 1, n_neurons)
         for i in pre_neurons_ids
             post_neurons_ids = rule.post_neurons_type == excitator ? range(1, length(e_neurons)) : range(length(e_neurons) + 1, n_neurons)
-            post_prob_neurons_ids = post_neurons_ids |> x -> randsubseq(rng, x, rule.prob)
+            post_prob_neurons_ids = post_neurons_ids |> x -> randsubseq(x, rule.prob)
             # disallow self connection else bursting bug
             post_neurons = [n for n in post_prob_neurons_ids if n != i]
             map_connect[i, post_neurons] .= Ref(rule.synapse_type)
