@@ -13,8 +13,8 @@ tspan = (0, 30)
 
 # e_neurons_n = 5
 
-param_range = 10e-9:20e-9:100e-9
-param_to_change = :Je
+param_range = 0.4e-9:0.01e-9:0.5e-9
+param_to_change = :Ibase
 
 for param_i in param_range
     # @time params = Neuron.AdExNeuronParams()
@@ -29,8 +29,8 @@ for param_i in param_range
     # stim_params.n_trials = 20
     stim_params.amplitude = 0.50e-9
     stim_params.duration = 50.0e-3
-    stim_params.deviant_idx = 2
-    stim_params.standard_idx = 1
+    stim_params.deviant_idx = 0
+    stim_params.standard_idx = 0
     stim_params.p_deviant = 0.1
 
     params[param_to_change] = param_i
@@ -54,9 +54,10 @@ for param_i in param_range
     #
     pre_neurons = [row[1] for row in con_mapping]
     post_neurons = [row[2] for row in con_mapping]
-    e_neurons_n = size(unique([pre_neurons; post_neurons]), 1)
+    # e_neurons_n = size(unique([pre_neurons; post_neurons]), 1)
+    e_neurons_n = 3
 
-    name = "3neurons_ssa_specific_response_" * string(param_to_change) * "=" * string(param_i)
+    name = "jitter_" * string(param_to_change) * "=" * string(param_i)
     out_path_prefix = "results/"
     (sol, simplified_model, prob) = SNN.Pipeline.run_exp(
         out_path_prefix, name;
@@ -64,6 +65,6 @@ for param_i in param_range
         params=params,
         stim_params=stim_params,
         tspan=tspan,
-        con_mapping=con_mapping,
+        con_mapping=[],
     )
 end

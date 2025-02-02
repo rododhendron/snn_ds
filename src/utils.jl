@@ -2,6 +2,7 @@ module Utils
 using ComponentArrays: ComponentVecOrMat
 using ModelingToolkit, DifferentialEquations, Symbolics, Transducers, YAML
 using ComponentArrays, JLD2
+using ModelingToolkit: AbstractODESystem
 
 export ParamTree, fetch_tree, get_spike_timings, get_spikes_from_r
 
@@ -14,7 +15,7 @@ struct ParamTree
     master_node::ParamNode
 end
 
-function instantiate_systems(model::ODESystem)
+function instantiate_systems(model::AbstractODESystem)
     nodes = []
     for system in propertynames(model)
         push!(nodes, instantiate_systems(getproperty(model, system)))
@@ -66,12 +67,12 @@ function fetch_tree(path::Vector{String}, tree::ParamTree, isin::Bool=true) # is
     fetch_node(path, tree.master_node, isin) |> Cat() |> Cat() |> Filter(!isnothing) |> collect
 end
 
-function make_param_tree(model::ODESystem)::ParamTree
+function make_param_tree(model::AbstractODESystem)::ParamTree
     master_node = instantiate_systems(model)
     tree::ParamTree = ParamTree(master_node)
 end
 
-function fetch_uparameters_from_symbol(model::ODESystem, sym_to_fetch::Symbol)::Vector{SymbolicUtils.BasicSymbolic{Real}}
+function fetch_uparameters_from_symbol(model::AbstractODESystem, sym_to_fetch::Symbol)::Vector{SymbolicUtils.BasicSymbolic{Real}}
     replaced_parameter(param) = split(param |> Symbol |> String, "(")[1]
     params = parameters(model) .|> replaced_parameter
 end

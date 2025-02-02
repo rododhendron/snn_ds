@@ -1,7 +1,7 @@
 module Neuron
 using Random
 using ModelingToolkit, Parameters, StringDistances, Transducers, BangBang, StaticArrays, Symbolics, DifferentialEquations, ComponentArrays
-using ModelingToolkit: t_nounits as t, D_nounits as D, Model
+using ModelingToolkit: t_nounits as t, D_nounits as D, Model, AbstractODESystem
 using PrecompileTools: @setup_workload, @compile_workload
 
 const start_input::Float64 = 200e-3
@@ -50,9 +50,11 @@ end
         duration
         group
         schedule[1:3, 1:n_stims]
+        sigma # noise coef
+        Ibase
     end
     @equations begin
-        D(v) ~ (-Je * (v - vrest) + Je * delta * exp((v - vthr) / delta) - w + Ii + Ie + Ib) / Cm # voltage dynamic
+        D(v) ~ (-Je * (v - vrest) + Je * delta * exp((v - vthr) / delta) - w + Ii + Ie + Ib + Ibase) / Cm # voltage dynamic
         D(w) ~ (-w + a * (v - vrest)) / TauW # adaptation dynamic
         Ib ~ step_fn(t, input_value, schedule, group)
         D(R) ~ 0
@@ -114,6 +116,8 @@ function get_adex_neuron_params_skeleton(type::DataType)
         # e_neuron_1__soma__input_value=0.80e-9, # input value specific to excitatory neuron 1
         duration=400e-3,    # Duration of the stimulus onset (s)
         group=0,
+        sigma=0,
+        Ibase=0
     )
 end
 
@@ -134,15 +138,15 @@ struct SIMPLE_E <: SynapseType end
 struct AMPA <: SynapseType end
 struct GABAa <: SynapseType end
 
-function get_synapse_eq(_synapse_type::AMPA, post_neuron::ODESystem)::Equation # _ before variable is a convention for a unused variable in function body ; just used for type dispatch
+function get_synapse_eq(_synapse_type::AMPA, post_neuron::AbstractODESystem)::Equation # _ before variable is a convention for a unused variable in function body ; just used for type dispatch
     Equation(post_neuron.ampa_syn.g_syn, post_neuron.ampa_syn.g_syn + post_neuron.ampa_syn.inc_gsyn)
 end
 
-function get_synapse_eq(_synapse_type::GABAa, post_neuron::ODESystem)::Equation # _ before variable is a convention for a unused variable in function body ; just used for type dispatch
+function get_synapse_eq(_synapse_type::GABAa, post_neuron::AbstractODESystem)::Equation # _ before variable is a convention for a unused variable in function body ; just used for type dispatch
     Equation(post_neuron.gabaa_syn.g_syn, post_neuron.gabaa_syn.g_syn + post_neuron.gabaa_syn.inc_gsyn)
 end
 
-function get_synapse_eq(_synapse_type::Nothing, post_neuron::ODESystem)::Nothing # _ before variable is a convention for a unused variable in function body ; just used for type dispatch
+function get_synapse_eq(_synapse_type::Nothing, post_neuron::AbstractODESystem)::Nothing # _ before variable is a convention for a unused variable in function body ; just used for type dispatch
     nothing
 end
 
@@ -161,7 +165,7 @@ function make_neuron(params::ComponentArray, soma_model::Model, tspan::Tuple{Int
     )
     neuron
 end
-make_events(premises::Vector{Equation}, pre::ODESystem)::Pair{Vector{Equation},Vector{Equation}} = [pre.soma.v ~ pre.soma.vspike] => vcat(
+make_events(premises::Vector{Equation}, pre::AbstractODESystem)::Pair{Vector{Equation},Vector{Equation}} = [pre.soma.v ~ pre.soma.vspike] => vcat(
     [
         pre.soma.v ~ pre.soma.vrest,
         pre.soma.R ~ pre.soma.R + 1,
@@ -193,7 +197,7 @@ function instantiate_connections(id_map, map_connect, post_neurons)::Vector{Pair
     all_callbacks
 end
 
-function infer_connection_from_map(neurons::Vector{ODESystem}, mapping)
+function infer_connection_from_map(neurons::Vector{T}, mapping) where {T<:AbstractODESystem}
     # take neurons, assign ids, map connections from dict map
     n_neurons = length(neurons)
     id_map = [(i, neurons[i]) for i in 1:n_neurons]
@@ -203,7 +207,7 @@ function infer_connection_from_map(neurons::Vector{ODESystem}, mapping)
     end
     (id_map, map_connect)
 end
-function init_connection_map(e_neurons::Vector{ODESystem}, i_neurons::Vector{ODESystem}, connection_rules::Vector{ConnectionRule})
+function init_connection_map(e_neurons::Vector{T}, i_neurons::Vector{T}, connection_rules::Vector{ConnectionRule}) where {T<:AbstractODESystem}
     neurons = vcat(e_neurons, i_neurons)
     n_neurons = length(e_neurons) + length(i_neurons)
     id_map = [(i, neurons[i]) for i in 1:n_neurons]
@@ -221,7 +225,7 @@ function init_connection_map(e_neurons::Vector{ODESystem}, i_neurons::Vector{ODE
     (id_map, map_connect)
 end
 
-function make_network(neurons::Vector{ODESystem}, connections::Vector{Pair{Vector{Equation},Vector{Equation}}})::ODESystem
+function make_network(neurons::Vector{T}, connections::Vector{Pair{Vector{Equation},Vector{Equation}}})::T where {T<:AbstractODESystem}
     ModelingToolkit.compose(ODESystem([], t; continuous_events=connections, name=:connected_neurons), neurons)
 end
 
@@ -275,7 +279,7 @@ function instantiate_uparam(parameter::SymbolicUtils.BasicSymbolic, uparams)::Un
     end
 end
 
-function map_params(network::ODESystem, params::ComponentArray, uparams::ComponentArray; match_nums::Bool=true)::Tuple{Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}},Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}}}
+function map_params(network::AbstractODESystem, params::ComponentArray, uparams::ComponentArray; match_nums::Bool=true)::Tuple{Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}},Vector{Pair{SymbolicUtils.BasicSymbolic,Union{Int64,Float64}}}}
     parameters_to_replace = parameters(network)
     uparameters_to_replace = unknowns(network)
 

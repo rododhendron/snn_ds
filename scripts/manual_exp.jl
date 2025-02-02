@@ -9,7 +9,7 @@ using Symbolics, ModelingToolkit, DifferentialEquations, ComponentArrays, Linear
 # gpu = to_device_fn()
 gpu = x -> x
 
-tspan = (0, 200)
+tspan = (0, 10)
 
 # e_neurons_n = 5
 
@@ -25,32 +25,34 @@ stim_params = SNN.Params.get_stim_params_skeleton()
 # stim_params.n_trials = 20
 stim_params.amplitude = 0.50e-9
 stim_params.duration = 50.0e-3
-stim_params.deviant_idx = 2
-stim_params.standard_idx = 1
+stim_params.deviant_idx = 0
+stim_params.standard_idx = 0
 stim_params.p_deviant = 0.1
 
+params.Ibase = 4.7e-10
 # id_map struct = (id of neuron to map in connections, neuron)
 # connections shape = (n_neurons, n_neurons)
-con_mapping_nested = [
-    (SNN.Params.@connect_neurons [1, 2] SNN.Neuron.AMPA() 3),
-]
-con_mapping = reduce(vcat, con_mapping_nested)
-con_mapping_5_neurons = [
-    (1, 2, SNN.Neuron.AMPA()),
-    (2, 3, SNN.Neuron.AMPA()),
-    (5, 4, SNN.Neuron.AMPA()),
-    (4, 3, SNN.Neuron.AMPA()),
-]
+# con_mapping_nested = [
+#     (SNN.Params.@connect_neurons [1, 2] SNN.Neuron.AMPA() 3),
+# ]
+# con_mapping = reduce(vcat, con_mapping_nested)
+# con_mapping_5_neurons = [
+#     (1, 2, SNN.Neuron.AMPA()),
+#     (2, 3, SNN.Neuron.AMPA()),
+#     (5, 4, SNN.Neuron.AMPA()),
+#     (4, 3, SNN.Neuron.AMPA()),
+# ]
 # con_mapping = [
 #     (1, 3, SNN.Neuron.AMPA()),
 #     (2, 3, SNN.Neuron.AMPA())
 # ]
 #
-pre_neurons = [row[1] for row in con_mapping]
-post_neurons = [row[2] for row in con_mapping]
-e_neurons_n = size(unique([pre_neurons; post_neurons]), 1)
+# pre_neurons = [row[1] for row in con_mapping]
+# post_neurons = [row[2] for row in con_mapping]
+# e_neurons_n = size(unique([pre_neurons; post_neurons]), 1)
+e_neurons_n = 3
 
-name = "3neurons_ssa_specific_response"
+name = "jitter_network"
 out_path_prefix = "results/"
 (sol, simplified_model, prob) = SNN.Pipeline.run_exp(
     out_path_prefix, name;
@@ -58,5 +60,5 @@ out_path_prefix = "results/"
     params=params,
     stim_params=stim_params,
     tspan=tspan,
-    con_mapping=con_mapping,
+    con_mapping=[],
 )
