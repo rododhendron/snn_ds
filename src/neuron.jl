@@ -50,7 +50,6 @@ end
         duration
         group
         schedule[1:3, 1:n_stims]
-        sigma # noise coef
         Ibase
     end
     @equations begin
@@ -150,6 +149,10 @@ function get_synapse_eq(_synapse_type::Nothing, post_neuron::AbstractODESystem):
     nothing
 end
 
+function get_noise_eq(neuron, sigma::Float64)
+    neuron.soma.v * sigma
+end
+
 function make_neuron(params::ComponentArray, soma_model::Model, tspan::Tuple{Int,Int}, name::Symbol, schedule)::ODESystem
     @named soma = soma_model(; name=Symbol("soma"), n_stims=size(schedule, 2), schedule=schedule)
     @named ampa_syn = SynapseAMPA(; name=Symbol("ampa_syn"))
@@ -195,6 +198,10 @@ function instantiate_connections(id_map, map_connect, post_neurons)::Vector{Pair
         push!(all_callbacks, current_neuron_callbacks)
     end
     all_callbacks
+end
+
+function instantiate_noise(neurons, sigma)
+    get_noise_eq.(neurons, Ref(sigma))
 end
 
 function infer_connection_from_map(neurons::Vector{T}, mapping) where {T<:AbstractODESystem}

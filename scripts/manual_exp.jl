@@ -25,8 +25,8 @@ stim_params = SNN.Params.get_stim_params_skeleton()
 # stim_params.n_trials = 20
 stim_params.amplitude = 0.50e-9
 stim_params.duration = 50.0e-3
-stim_params.deviant_idx = 0
-stim_params.standard_idx = 0
+stim_params.deviant_idx = 1
+stim_params.standard_idx = 2
 stim_params.p_deviant = 0.1
 
 params.Ibase = 4.7e-10
@@ -42,10 +42,10 @@ params.Ibase = 4.7e-10
 #     (5, 4, SNN.Neuron.AMPA()),
 #     (4, 3, SNN.Neuron.AMPA()),
 # ]
-# con_mapping = [
-#     (1, 3, SNN.Neuron.AMPA()),
-#     (2, 3, SNN.Neuron.AMPA())
-# ]
+con_mapping = [
+    (1, 3, SNN.Neuron.AMPA()),
+    (2, 3, SNN.Neuron.AMPA())
+]
 #
 # pre_neurons = [row[1] for row in con_mapping]
 # post_neurons = [row[2] for row in con_mapping]
@@ -60,5 +60,5 @@ out_path_prefix = "results/"
     params=params,
     stim_params=stim_params,
     tspan=tspan,
-    con_mapping=[],
+    con_mapping=con_mapping,
 )

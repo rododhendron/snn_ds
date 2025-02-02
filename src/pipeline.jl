@@ -37,7 +37,11 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
 
     @time network = Neuron.make_network(e_neurons, connections)
 
-    @time simplified_model = structural_simplify(network; split=false)
+    # add noise
+    noise_eqs = Neuron.instantiate_noise(e_neurons, 0.1)
+    @named noise_network = SDESystem(network, noise_eqs)
+
+    @time simplified_model = structural_simplify(noise_network; split=false)
 
     # infere params
     @time uparams = Neuron.get_adex_neuron_uparams_skeleton(Float64)
@@ -45,7 +49,7 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
     @time iparams, iuparams = Neuron.map_params(simplified_model, overriden_params, uparams; match_nums=true)
 
     if isnothing(remake_prob)
-        @time prob = ODEProblem{true}(simplified_model, iuparams, tspan, iparams)#, sparse=true)
+        @time prob = SDEProblem{true}(simplified_model, iuparams, tspan, iparams)#, sparse=true)
     else
         @time prob = remake(remake_prob; u0=iuparams, p=iparams)
     end
