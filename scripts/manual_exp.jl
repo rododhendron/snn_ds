@@ -54,7 +54,7 @@ e_neurons_n = 3
 
 name = "jitter_network"
 out_path_prefix = "results/"
-(sol, simplified_model, prob) = SNN.Pipeline.run_exp(
+prob = SNN.Pipeline.run_exp(
     out_path_prefix, name;
     e_neurons_n=e_neurons_n,
     params=params,

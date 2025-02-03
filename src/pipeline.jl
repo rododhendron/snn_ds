@@ -20,8 +20,6 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
     (input_neurons, rules) = Params.update_neurons_rules_from_sequence(e_neurons, stim_params, params)
     (input_grp, input_neuron_vec) = zip(input_neurons...)
     input_neurons_name = [neuron.name for neuron in [input_neuron_vec...;]]
-    @show input_grp
-    @show input_neurons_name
     overriden_params = Params.override_params(params, rules)
     if !isnothing(con_mapping)
         (id_map, map_connect) = Neuron.infer_connection_from_map(e_neurons, con_mapping)
@@ -38,10 +36,13 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
     @time network = Neuron.make_network(e_neurons, connections)
 
     # add noise
-    noise_eqs = Neuron.instantiate_noise(e_neurons, 0.1)
+    noise_eqs = Neuron.instantiate_noise(network, e_neurons, 0.01)
+
+    # @named noise_network = System([network; noise_eqs])
     @named noise_network = SDESystem(network, noise_eqs)
 
-    @time simplified_model = structural_simplify(noise_network; split=false)
+    @time simplified_model = structural_simplify(noise_network; split=true)
+    @show simplified_model
 
     # infere params
     @time uparams = Neuron.get_adex_neuron_uparams_skeleton(Float64)
@@ -55,9 +56,10 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
     end
 
     println("Solving...")
-    # @time sol = solve(prob, ImplicitDeuflhardExtrapolation(threading=true); abstol=1e-3, reltol=1e-3)
-    @time sol = solve(prob, KenCarp47(linsolve=KrylovJL_GMRES()); abstol=1e-4, reltol=1e-4, dtmax=1e-3)
-    # @time sol = solve(prob, Rodas5P(); abstol=1e-6, reltol=1e-6)
+    # @time sol = solve(prob, KenCarp47(linsolve=KrylovJL_GMRES()); abstol=1e-4, reltol=1e-4, dtmax=1e-3)
+    # @time sol = solve(prob, SOSRA(); abstol=1e-3, reltol=1e-3, dtmax=1e-3)
+    # @time sol = solve(prob, SKenCarp(); abstol=1e-3, reltol=1e-3, dtmax=1e-3)
+    @time sol = solve(prob, ImplicitRKMil(), abstol=1e-2, reltol-1e-2)
 
     @time tree::Utils.ParamTree = Utils.make_param_tree(simplified_model)
 
