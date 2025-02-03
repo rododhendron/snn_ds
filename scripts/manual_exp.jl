@@ -9,27 +9,38 @@ using Symbolics, ModelingToolkit, DifferentialEquations, ComponentArrays, Linear
 # gpu = to_device_fn()
 gpu = x -> x
 
-tspan = (0, 10)
+tspan = (0, 3)
 
 # e_neurons_n = 5
 
+# make schedule
+stim_params = SNN.Params.get_stim_params_skeleton()
+# stim_params.n_trials = 20
+stim_params.amplitude = 0.03e-9
+stim_params.duration = 50.0e-3
+stim_params.deviant_idx = 0
+stim_params.standard_idx = 1
+stim_params.p_deviant = 0.1
+
+stim_schedule = SNN.Params.generate_schedule(stim_params, tspan)
+
+sch_t = deepcopy(stim_schedule[1, :])
+sch_onset = deepcopy(stim_schedule[2, :])
+sch_group = deepcopy(stim_schedule[3, :])
+
 # @time params = Neuron.AdExNeuronParams()
-@time params = SNN.Neuron.get_adex_neuron_params_skeleton(Float64)
+@time params = SNN.Neuron.get_adex_neuron_params_skeleton(Float64, sch_t, sch_onset, sch_group)
 params.inc_gsyn = 40e-9
 params.a = 5.0e-8          # Subthreshold adaptation (A)
 params.b = 0.2e-9          # Spiking adaptation (A)
 params.TauW = 500.0e-3      # Adaptation time constant (s)
 params.Cm = 4.5e-10
-# make schedule
-stim_params = SNN.Params.get_stim_params_skeleton()
-# stim_params.n_trials = 20
-stim_params.amplitude = 0.50e-9
-stim_params.duration = 50.0e-3
-stim_params.deviant_idx = 1
-stim_params.standard_idx = 2
-stim_params.p_deviant = 0.1
 
 params.Ibase = 4.7e-10
+
+params.sch_t = sch_t
+params.sch_onset = sch_onset
+params.sch_group = sch_group
 # id_map struct = (id of neuron to map in connections, neuron)
 # connections shape = (n_neurons, n_neurons)
 # con_mapping_nested = [
@@ -47,18 +58,19 @@ con_mapping = [
     (2, 3, SNN.Neuron.AMPA())
 ]
 #
-# pre_neurons = [row[1] for row in con_mapping]
-# post_neurons = [row[2] for row in con_mapping]
-# e_neurons_n = size(unique([pre_neurons; post_neurons]), 1)
-e_neurons_n = 3
+pre_neurons = [row[1] for row in con_mapping]
+post_neurons = [row[2] for row in con_mapping]
+e_neurons_n = size(unique([pre_neurons; post_neurons]), 1)
+# e_neurons_n = 2
 
-name = "jitter_network"
+name = "jitter_network_noise"
 out_path_prefix = "results/"
-prob = SNN.Pipeline.run_exp(
+(sol, simplified_model, prob) = SNN.Pipeline.run_exp(
     out_path_prefix, name;
     e_neurons_n=e_neurons_n,
     params=params,
     stim_params=stim_params,
     tspan=tspan,
     con_mapping=con_mapping,
+    stim_schedule=stim_schedule
 )

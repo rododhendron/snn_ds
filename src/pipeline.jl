@@ -8,12 +8,12 @@ using ..Neuron
 using ..Utils
 using ..Plots
 
-function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_params, tspan, con_mapping=nothing, prob_con=(0.05, 0.05, 0.05, 0.05), remake_prob=nothing)
+function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_params, stim_schedule, tspan, con_mapping=nothing, prob_con=(0.05, 0.05, 0.05, 0.05), remake_prob=nothing)
     Random.seed!(1234)
     path = path_prefix * name * "/"
     mkpath(path)
     exp_name = path * name
-    stim_schedule = Params.generate_schedule(stim_params, tspan)
+
     @time e_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("e_neuron_$(i)"), stim_schedule) for i in 1:e_neurons_n]
     @time i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)"), stim_schedule) for i in 1:i_neurons_n]
 
@@ -36,13 +36,12 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
     @time network = Neuron.make_network(e_neurons, connections)
 
     # add noise
-    noise_eqs = Neuron.instantiate_noise(network, e_neurons, 0.01)
+    noise_eqs = Neuron.instantiate_noise(network, e_neurons, 0.001)
 
     # @named noise_network = System([network; noise_eqs])
     @named noise_network = SDESystem(network, noise_eqs)
 
-    @time simplified_model = structural_simplify(noise_network; split=true)
-    @show simplified_model
+    @time simplified_model = structural_simplify(noise_network; split=false)
 
     # infere params
     @time uparams = Neuron.get_adex_neuron_uparams_skeleton(Float64)
@@ -59,7 +58,7 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
     # @time sol = solve(prob, KenCarp47(linsolve=KrylovJL_GMRES()); abstol=1e-4, reltol=1e-4, dtmax=1e-3)
     # @time sol = solve(prob, SOSRA(); abstol=1e-3, reltol=1e-3, dtmax=1e-3)
     # @time sol = solve(prob, SKenCarp(); abstol=1e-3, reltol=1e-3, dtmax=1e-3)
-    @time sol = solve(prob, ImplicitRKMil(), abstol=1e-2, reltol-1e-2)
+    @time sol = solve(prob, ImplicitRKMil(), abstol=1e-2, reltol=-1e-2, dtmax=1e-3)
 
     @time tree::Utils.ParamTree = Utils.make_param_tree(simplified_model)
 
@@ -104,7 +103,7 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
 
     results = Dict()
 
-    if !isnothing(stim_params.deviant_idx)
+    if !isnothing(stim_params.deviant_idx) && stim_params.deviant_idx > 0
         standards = [stim[1] for stim in eachcol(stim_schedule) if stim[3] in stim_params.standard_idx]
         deviants = [stim[1] for stim in eachcol(stim_schedule) if stim[3] in stim_params.deviant_idx]
         #readout |> count dev on standard |> ok

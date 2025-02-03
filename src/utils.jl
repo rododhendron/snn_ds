@@ -7,8 +7,8 @@ using ModelingToolkit: AbstractODESystem
 export ParamTree, fetch_tree, get_spike_timings, get_spikes_from_r
 
 mutable struct ParamNode
-    nodes::Vector{Union{ParamNode,Num,Nothing}}
-    system::ODESystem
+    nodes::Vector{Union{ParamNode,Num,Nothing,Vector{Nothing}}}
+    system::AbstractODESystem
 end
 
 struct ParamTree
@@ -31,7 +31,15 @@ function instantiate_systems(model::Nothing)
     nothing
 end
 
+function instantiate_systems(model::Symbolics.Arr{Num,2})
+    [nothing]
+end
+
 function fetch_node(_, node::Nothing, _)
+    nothing
+end
+
+function fetch_node(_, node::Vector{Nothing}, _)
     nothing
 end
 
@@ -54,7 +62,7 @@ end
 
 function fetch_node(path, node::ParamNode, isin::Bool)
     match_fn(x) = isin ? occursin(path[1], x.system.name |> String) : path[1] == x.system.name |> take_current_node_name
-    matched_nodes = filter(node -> typeof(node) == ParamNode && match_fn(node), node.nodes)
+    matched_nodes = filter(node -> typeof(node) == ParamNode && !isnothing(node) && match_fn(node), node.nodes)
     if !isempty(matched_nodes)
         fetch_node.(Ref(path), matched_nodes, isin)
     else
@@ -64,7 +72,8 @@ end
 
 function fetch_tree(path::Vector{String}, tree::ParamTree, isin::Bool=true) # isin lets us match exactly specified numerical value
     # knowing required path, fetch specific matching param in tree
-    fetch_node(path, tree.master_node, isin) |> Cat() |> Cat() |> Filter(!isnothing) |> collect
+    fetch_node(path, tree.master_node, isin) |> Filter(!isnothing) |> collect
+    # fetch_node(path, tree.master_node, isin) |> Cat() |> Cat() |> Filter(!isnothing) |> collect
 end
 
 function make_param_tree(model::AbstractODESystem)::ParamTree
@@ -124,8 +133,6 @@ function write_sol(sol; name)
 end
 
 function get_matching_timings(stims::Vector, spikes::Vector, window::Float64)
-    @show stims
-    @show spikes
     stims |> Map(x -> count(i -> x < i < x + window, spikes)) |> collect
 end
 
