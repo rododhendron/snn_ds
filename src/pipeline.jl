@@ -8,7 +8,9 @@ using ..Neuron
 using ..Utils
 using ..Plots
 
-function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_params, stim_schedule, tspan, con_mapping=nothing, prob_con=(0.05, 0.05, 0.05, 0.05), remake_prob=nothing)
+ModelingToolkit.get_continuous_events(sys::SDESystem) = [sys.continuous_events...]
+
+function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, solver, params, stim_params, stim_schedule, tspan, con_mapping=nothing, prob_con=(0.05, 0.05, 0.05, 0.05), remake_prob=nothing)
     Random.seed!(1234)
     path = path_prefix * name * "/"
     mkpath(path)
@@ -38,19 +40,27 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
     # add noise
     noise_eqs = Neuron.instantiate_noise(network, e_neurons, 0.001)
 
-    # @named noise_network = System([network; noise_eqs])
-    @named noise_network = SDESystem(network, noise_eqs)
+    @named noise_network = SDESystem(network, noise_eqs, continuous_events=continuous_events(network), observed=observed(network))
 
     @time simplified_model = structural_simplify(noise_network; split=false)
+    @time tree::Utils.ParamTree = Utils.make_param_tree(simplified_model)
+    @time res = Utils.fetch_tree(["e_neuron", "R"], tree)
 
     # infere params
     @time uparams = Neuron.get_adex_neuron_uparams_skeleton(Float64)
 
     @time iparams, iuparams = Neuron.map_params(simplified_model, overriden_params, uparams; match_nums=true)
 
+
     if isnothing(remake_prob)
-        @time prob = SDEProblem{true}(simplified_model, iuparams, tspan, iparams)#, sparse=true)
+        println("Make problem...")
+        contin_cb = ModelingToolkit.generate_rootfinding_callback([simplified_model.continuous_events...], simplified_model, unknowns(simplified_model), parameters(simplified_model))
+        cb = ModelingToolkit.merge_cb(contin_cb, nothing) # 2nd arg is placeholder for discrete callback
+
+        @time prob = SDEProblem(simplified_model, iuparams, tspan, iparams, cb=cb)#, sparse=true)
+        # @time prob = SDEProblem{true}(simplified_model, iuparams, tspan, iparams)#, sparse=true)
     else
+        println("Remake problem...")
         @time prob = remake(remake_prob; u0=iuparams, p=iparams)
     end
 
@@ -58,12 +68,11 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, params, stim_p
     # @time sol = solve(prob, KenCarp47(linsolve=KrylovJL_GMRES()); abstol=1e-4, reltol=1e-4, dtmax=1e-3)
     # @time sol = solve(prob, SOSRA(); abstol=1e-3, reltol=1e-3, dtmax=1e-3)
     # @time sol = solve(prob, SKenCarp(); abstol=1e-3, reltol=1e-3, dtmax=1e-3)
-    @time sol = solve(prob, ImplicitRKMil(), abstol=1e-2, reltol=-1e-2, dtmax=1e-3)
-
-    @time tree::Utils.ParamTree = Utils.make_param_tree(simplified_model)
+    # @time sol = solve(prob, ImplicitRKMil(), abstol=1e-2, reltol=-1e-2, dtmax=1e-3)
+    @time sol = solve(prob, solver, abstol=1e-4, reltol=1e-4, dtmax=1e-3)
 
     println("tree fetch...")
-    @time res = Utils.fetch_tree(["e_neuron", "R"], tree)
+    # @time res = Utils.fetch_tree(["e_neuron", "R"], tree)
     # @time ris = Utils.fetch_tree(["i_neuron", "R"], tree)
 
     println("hcat solutions")

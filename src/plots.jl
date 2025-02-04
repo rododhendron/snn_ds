@@ -102,16 +102,17 @@ end
 fetch_tree_neuron_value(neuron_type::String, i::Int, val::String, tree::ParamTree) = fetch_tree(["$(neuron_type)_$i", val], tree::ParamTree, false) |> first
 function plot_excitator_value(i, sol, start, stop, name_interpol, tree::ParamTree, offset, schedule)
     e_v = fetch_tree_neuron_value("e_neuron", i, "v", tree)
-    e_Ib = fetch_tree_neuron_value("e_neuron", i, "Ib", tree)
+    @show e_v
+    # e_Ib = fetch_tree_neuron_value("e_neuron", i, "Ib", tree)
     e_vtarget = fetch_tree_neuron_value("e_neuron", i, "vtarget_exc", tree)
     e_vrest = fetch_tree_neuron_value("e_neuron", i, "vrest", tree)
     ps = ComponentVector(vtarget=e_vtarget, v_rest=e_vrest)
-    Plots.plot_neuron_value(sol.t, sol[e_v], ps, sol[e_Ib], offset; start=start, stop=stop, title="voltage of e $i", name=name_interpol("voltage_e_$i.png"), schedule=schedule)
+    Plots.plot_neuron_value(sol.t, sol[e_v], ps, nothing, offset; start=start, stop=stop, title="voltage of e $i", name=name_interpol("voltage_e_$i.png"), schedule=schedule)
 end
 function plot_adaptation_value(i, sol, start, stop, name_interpol, tree::ParamTree, offset, schedule)
     e_w = fetch_tree_neuron_value("e_neuron", i, "w", tree)
-    e_Ib = fetch_tree_neuron_value("e_neuron", i, "Ib", tree)
-    Plots.plot_neuron_value(sol.t, sol[e_w], nothing, sol[e_Ib], offset; start=start, stop=stop, title="adaptation of e $i", name=name_interpol("adaptation_e_$i.png"), schedule=schedule, is_voltage=false)
+    # e_Ib = fetch_tree_neuron_value("e_neuron", i, "Ib", tree)
+    Plots.plot_neuron_value(sol.t, sol[e_w], nothing, nothing, offset; start=start, stop=stop, title="adaptation of e $i", name=name_interpol("adaptation_e_$i.png"), schedule=schedule, is_voltage=false)
 end
 
 end

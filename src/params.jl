@@ -91,7 +91,6 @@ function generate_schedule(params::ComponentVector, tspan::Tuple{Int,Int})::Arra
         @inbounds schedule[3, i] = stims[i]
     end
 
-    @show schedule
     return schedule
 end
 

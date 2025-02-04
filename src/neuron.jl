@@ -7,25 +7,26 @@ using PrecompileTools: @setup_workload, @compile_workload
 const start_input::Float64 = 200e-3
 # const input_duration::Float64 = 200e-3
 const dt_clamp = 5 # ms
-clock = Clock(dt_clamp)
-k = ShiftIndex(clock)
 
-function step_fn(t, iv, sch_onset, sch_group, sch_t::Vector{Float64}, neuron_group)
+function step_fn(t, iv, sch_onset, sch_group, sch_t, neuron_group)
     # Vector of (t_start, duration, target)
-    @show sch_t
-    t_range = searchsorted(sch_t, t)
+    t_range = searchsorted(sch_t[:], t)
     t_min = min(t_range.start, t_range.stop) |> x -> x == 0 ? 1 : x
     stim = (sch_t[t_min], sch_onset[t_min], sch_group[t_min])
-    error("bug")
     return ifelse(
         (neuron_group == stim[3]) & (stim[1] <= t <= stim[1] + stim[2]),
         iv,
         0
     )
 end
-@register_array_symbolic step_fn(t, iv, sch_onset, sch_group, sch_t::Vector{Float64}, neuron_group) begin
-    size = 1
-    eltype = Float64
+@register_symbolic step_fn(t, iv, sch_onset::Vector{Float64}, sch_group::Vector{Float64}, sch_t::Vector{Float64}, neuron_group)
+
+function step_input(t, iv)
+    return ifelse(
+        t <= start_input,
+        iv,
+        1
+    )
 end
 
 @mtkmodel Soma begin # AdEx neuron from https://journals.physiology.org/doi/pdf/10.1152/jn.00686.2005
@@ -34,11 +35,15 @@ end
         w(t) = 0
         Ie(t), [input = true]
         Ii(t), [input = true]
-        Ib(t), [input = true]
+        # Ib(t), [input = true]
         R(t), [output = true]
     end
     @structural_parameters begin
         n_stims
+        # step
+        sch_onset
+        sch_group
+        sch_t
     end
     @parameters begin
         Je
@@ -53,15 +58,15 @@ end
         input_value
         duration
         group
-        sch_onset[1:n_stims] = zeros(n_stims)
-        sch_group[1:n_stims] = zeros(n_stims)
-        sch_t[1:n_stims] = zeros(n_stims)
         Ibase
+        # Ie
+        # Ii
     end
     @equations begin
-        D(v) ~ (-Je * (v - vrest) + Je * delta * exp((v - vthr) / delta) - w + Ii + Ie + Ib + Ibase) / Cm # voltage dynamic
+        D(v) ~ (-Je * (v - vrest) + Je * delta * exp((v - vthr) / delta) - w + Ii + Ie + step_fn(t, input_value, sch_onset, sch_group, sch_t, group) + Ibase) / Cm # voltage dynamic
         D(w) ~ (-w + a * (v - vrest)) / TauW # adaptation dynamic
-        Ib ~ step_fn(t, input_value, sch_onset, sch_group, sch_t, group)
+        # Ib ~ step_fn(t, input_value, sch_onset, sch_group, sch_t, group)
+        # Ib ~ step_input(t, input_value)
         D(R) ~ 0
     end
     # @continuous_events begin
@@ -99,7 +104,7 @@ end
     end
 end
 
-function get_adex_neuron_params_skeleton(type::DataType, sch_t, sch_group, sch_onset)
+function get_adex_neuron_params_skeleton(type::DataType)#, sch_t, sch_group, sch_onset)
     ComponentArray{type}(
         vrest=-65.0e-3,     # Resting membrane potential (V)
         vthr=-50.0e-3,      # Spike threshold (V)
@@ -123,9 +128,9 @@ function get_adex_neuron_params_skeleton(type::DataType, sch_t, sch_group, sch_o
         group=0,
         sigma=0,
         Ibase=0,
-        sch_t=sch_t,
-        sch_group=sch_group,
-        sch_onset=sch_onset,
+        # sch_t=sch_t,
+        # sch_group=sch_group,
+        # sch_onset=sch_onset,
     )
 end
 
@@ -135,7 +140,7 @@ function get_adex_neuron_uparams_skeleton(type::DataType)
         w=0.0e-9,
         Ie=0,
         Ii=0,
-        Ib=0e-9,
+        # Ib=0e-9,
         R=0,
         g_syn=0
     )
@@ -165,7 +170,6 @@ function get_noise_eq(neuron, sigma::Float64)
 end
 
 function make_neuron(params::ComponentArray, soma_model::Model, tspan::Tuple{Int,Int}, name::Symbol, schedule_p)::ODESystem
-    @show schedule_p
     @named soma = soma_model(; name=Symbol("soma"), n_stims=size(schedule_p, 2), sch_t=deepcopy(schedule_p[1, :]), sch_group=deepcopy(schedule_p[3, :]), sch_onset=deepcopy(schedule_p[2, :]))
     @named ampa_syn = SynapseAMPA(; name=Symbol("ampa_syn"))
     @named gabaa_syn = SynapseGABAa(; name=Symbol("gabaa_syn"))

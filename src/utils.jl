@@ -31,10 +31,6 @@ function instantiate_systems(model::Nothing)
     nothing
 end
 
-function instantiate_systems(model::Symbolics.Arr{Num,2})
-    [nothing]
-end
-
 function fetch_node(_, node::Nothing, _)
     nothing
 end
@@ -43,16 +39,17 @@ function fetch_node(_, node::Vector{Nothing}, _)
     nothing
 end
 
+function strip_sym(sym::AbstractString)
+    occursin("(", sym) ? split(sym, "(") |> first : sym
+end
+
 function fetch_node(path, node::Num, isin::Bool)
     split_sym = "₊"
-    node_string = node |> Symbol |> String |> x -> split(x, split_sym) |> last |> x -> split(x, "(") |> first
-    if !isin && path[1] == node_string
-        node
-    elseif isin && occursin(path[1], node_string)
-        node
-    else
-        nothing
-    end
+    node_strings = node |> Symbol |> String |> x -> split(x, split_sym) .|> strip_sym
+    node_string = join(node_strings, "_")
+
+    match_fn(el) = occursin(el, node_string)
+    matched_node = path |> Map(match_fn) |> collect |> all ? node : nothing
 end
 
 function take_current_node_name(name::Symbol)::String
@@ -66,7 +63,7 @@ function fetch_node(path, node::ParamNode, isin::Bool)
     if !isempty(matched_nodes)
         fetch_node.(Ref(path), matched_nodes, isin)
     else
-        fetch_node.(Ref(path[2:end]), node.nodes, isin)
+        fetch_node.(Ref(path), node.nodes, isin) # in SDESystem, tree break, TODO fix
     end
 end
 
@@ -91,7 +88,7 @@ function get_spikes_from_r(r_array)
     res_array = zeros(eltype(r_array), size(r_array))
     for i in 1:size(res_array, 1)
         for j in 2:size(res_array, 2)
-            res_array[i, j] = r_array[i, j-1] < r_array[i, j] ? 1.0 : 0.0
+            res_array[i, j] = floor(r_array[i, j-1]) < floor(r_array[i, j]) ? 1.0 : 0.0
         end
     end
     res_array
