@@ -35,7 +35,7 @@ end
         w(t) = 0
         Ie(t), [input = true]
         Ii(t), [input = true]
-        # Ib(t), [input = true]
+        Ib(t), [input = true]
         R(t), [output = true]
     end
     @structural_parameters begin
@@ -63,9 +63,9 @@ end
         # Ii
     end
     @equations begin
-        D(v) ~ (-Je * (v - vrest) + Je * delta * exp((v - vthr) / delta) - w + Ii + Ie + step_fn(t, input_value, sch_onset, sch_group, sch_t, group) + Ibase) / Cm # voltage dynamic
+        D(v) ~ (-Je * (v - vrest) + Je * delta * exp((v - vthr) / delta) - w + Ii + Ie + Ib + Ibase) / Cm # voltage dynamic
         D(w) ~ (-w + a * (v - vrest)) / TauW # adaptation dynamic
-        # Ib ~ step_fn(t, input_value, sch_onset, sch_group, sch_t, group)
+        Ib ~ step_fn(t, input_value, sch_onset, sch_group, sch_t, group)
         # Ib ~ step_input(t, input_value)
         D(R) ~ 0
     end
@@ -140,7 +140,7 @@ function get_adex_neuron_uparams_skeleton(type::DataType)
         w=0.0e-9,
         Ie=0,
         Ii=0,
-        # Ib=0e-9,
+        Ib=0e-9,
         R=0,
         g_syn=0
     )

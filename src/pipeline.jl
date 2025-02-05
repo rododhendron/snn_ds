@@ -58,7 +58,7 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, solver, params
         cb = ModelingToolkit.merge_cb(contin_cb, nothing) # 2nd arg is placeholder for discrete callback
 
         @time prob = SDEProblem(simplified_model, iuparams, tspan, iparams, cb=cb)#, sparse=true)
-        # @time prob = SDEProblem{true}(simplified_model, iuparams, tspan, iparams)#, sparse=true)
+    # @time prob = SDEProblem{true}(simplified_model, iuparams, tspan, iparams)#, sparse=true)
     else
         println("Remake problem...")
         @time prob = remake(remake_prob; u0=iuparams, p=iparams)
@@ -94,6 +94,8 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, solver, params
     for i in 1:e_neurons_n
         @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule)
         @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule)
+        @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule)
+        @time Plots.plot_aggregated_rate(i, sol, name_interpol, tree, stim_schedule)
     end
 
     res = Utils.fetch_tree(["e_neuron", "R"], tree)

@@ -1,4 +1,5 @@
 module Utils
+using Base: axes1
 using ComponentArrays: ComponentVecOrMat
 using ModelingToolkit, DifferentialEquations, Symbolics, Transducers, YAML
 using ComponentArrays, JLD2
@@ -83,7 +84,7 @@ function fetch_uparameters_from_symbol(model::AbstractODESystem, sym_to_fetch::S
     params = parameters(model) .|> replaced_parameter
 end
 
-function get_spikes_from_r(r_array)
+function get_spikes_from_r(r_array::Matrix)
     # if dims == time, features
     res_array = zeros(eltype(r_array), size(r_array))
     for i in 1:size(res_array, 1)
@@ -92,6 +93,15 @@ function get_spikes_from_r(r_array)
         end
     end
     res_array
+end
+
+function get_spikes_from_r(r_vector::Vector)
+    res_vector = zeros(eltype(r_vector), size(r_vector))
+    for i in axes(r_vector, 1)
+        res_vector[i] = floor(r_vector[max(i - 1, 1)]) < floor(r_vector[i]) ? 1.0 : 0.0
+    end
+    @show sum(res_vector)
+    res_vector
 end
 
 function get_spike_timings(r_spikes::BitVector, sol)

@@ -54,6 +54,22 @@ function make_fig(; xlabel="", ylabel="", title="", height=700, width=1600, ytic
     end
 end
 
+function plot_agg_value(times, values; xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false, schedule=[], offset=0)
+    f, ax, ax2, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title)
+
+    @show size(times)
+    @show size(values)
+    points = []
+    for i in axes(times, 1)
+        points_vec = (times[i], values[i])
+        push!(points, points_vec)
+    end
+
+    series!(ax, points, color=:viridis)
+    hlines!(ax, offset; color=:grey)
+    tofile ? save(name, f) : f
+end
+
 
 function plot_neuron_value(time, value, p, input_current, offset; start=0, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false, schedule=[])
     f, ax, ax2, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, schedule=schedule, plot_stims=true)
@@ -102,13 +118,56 @@ end
 fetch_tree_neuron_value(neuron_type::String, i::Int, val::String, tree::ParamTree) = fetch_tree(["$(neuron_type)_$i", val], tree::ParamTree, false) |> first
 function plot_excitator_value(i, sol, start, stop, name_interpol, tree::ParamTree, offset, schedule)
     e_v = fetch_tree_neuron_value("e_neuron", i, "v", tree)
-    @show e_v
     # e_Ib = fetch_tree_neuron_value("e_neuron", i, "Ib", tree)
     e_vtarget = fetch_tree_neuron_value("e_neuron", i, "vtarget_exc", tree)
     e_vrest = fetch_tree_neuron_value("e_neuron", i, "vrest", tree)
     ps = ComponentVector(vtarget=e_vtarget, v_rest=e_vrest)
     Plots.plot_neuron_value(sol.t, sol[e_v], ps, nothing, offset; start=start, stop=stop, title="voltage of e $i", name=name_interpol("voltage_e_$i.png"), schedule=schedule)
 end
+
+function compute_moving_average(time_dim::Vector{Float64}, values::Vector{Float64}, time_window::Float64)
+    stops = time_dim .+ time_window .|> x -> min(x, last(time_dim))
+    ranges = zip(time_dim, stops) |> collect
+    counts = ranges |> Map(x -> count(el -> x[1] <= el < x[2], values)) |> collect
+end
+
+function plot_spike_rate(i, sol, start, stop, name_interpol, tree::ParamTree, offset, schedule)
+    e_r = fetch_tree_neuron_value("e_neuron", i, "R", tree)
+
+    s_bool = sol[e_r] |> Utils.get_spikes_from_r .|> Bool
+
+    spikes = Utils.get_spike_timings(s_bool, sol)
+    spike_rate = compute_moving_average(sol.t, spikes, 1.0)
+
+    Plots.plot_neuron_value(sol.t, spike_rate, nothing, nothing, offset; start=start, stop=stop, title="spike rate of e $i", name=name_interpol("spike_rate_e_$i.png"), schedule=schedule, is_voltage=false)
+end
+
+function get_trials_from_schedule(schedule_p)
+    trial_starts = schedule_p[1, :]
+    trial_periods = diff(trial_starts)
+    mean_period = reduce(+, trial_periods) / length(trial_periods)
+    trial_stops = trial_starts .+ mean_period
+    zip(trial_starts, trial_stops) |> collect
+end
+
+function trial_to_idxs(trial_ranges, sol_t::Vector{Float64})
+    trial_ranges |> Map(x -> findall(ts -> x[1] < ts < x[2], sol_t)) |> collect
+end
+
+function plot_aggregated_rate(i, sol, name_interpol, tree::ParamTree, schedule_p)
+    e_r = fetch_tree_neuron_value("e_neuron", i, "R", tree)
+    e_v = fetch_tree_neuron_value("e_neuron", i, "v", tree)
+
+    spikes = sol[e_r] |> Utils.get_spikes_from_r .|> Bool |> sp -> Utils.get_spike_timings(sp, sol)
+    trials = get_trials_from_schedule(schedule_p) |> x -> trial_to_idxs(x, sol.t)
+    trial_values = trials |> Map(trial -> sol[e_v][trial]) |> collect
+    trial_starts = schedule_p[1, :]
+    trial_times = trials |> Map(trial -> sol.t[trial]) |> collect
+    trial_t_offsetted = [trial_times[i] .- Ref(trial_starts[i]) for i in axes(trial_starts, 1)]
+
+    Plots.plot_agg_value(trial_t_offsetted, trial_values; title="adaptation of e $i", name=name_interpol("trials_$i.png"))
+end
+
 function plot_adaptation_value(i, sol, start, stop, name_interpol, tree::ParamTree, offset, schedule)
     e_w = fetch_tree_neuron_value("e_neuron", i, "w", tree)
     # e_Ib = fetch_tree_neuron_value("e_neuron", i, "Ib", tree)
