@@ -9,14 +9,14 @@ using Symbolics, ModelingToolkit, DifferentialEquations, ComponentArrays, Linear
 # gpu = to_device_fn()
 gpu = x -> x
 
-tspan = (0, 10)
+tspan = (0, 30)
 
 # e_neurons_n = 5
 
 # make schedule
 stim_params = SNN.Params.get_stim_params_skeleton()
 # stim_params.n_trials = 20
-stim_params.amplitude = 0.3e-9
+stim_params.amplitude = 0.8e-9
 stim_params.duration = 100.0e-3
 stim_params.deviant_idx = 2
 stim_params.standard_idx = 1
@@ -30,14 +30,13 @@ sch_group = deepcopy(stim_schedule[3, :])
 
 # @time params = Neuron.AdExNeuronParams()
 @time params = SNN.Neuron.get_adex_neuron_params_skeleton(Float64)#, sch_t, sch_onset, sch_group)
-params.inc_gsyn = 40e-9
-params.a = 5.0e-8          # Subthreshold adaptation (A)
-params.b = 0.2e-9          # Spiking adaptation (A)
+params.inc_gsyn = 6e-9
+params.a = 8.0e-9          # Subthreshold adaptation (A)
+params.b = 3e-10          # Spiking adaptation (A)
 params.TauW = 500.0e-3      # Adaptation time constant (s)
 params.Cm = 4.5e-10
 
-# params.Ibase = 4.7e-10
-params.Ibase = 5.2e-10
+params.Ibase = 4e-10
 
 # params.sch_t = sch_t
 # params.sch_onset = sch_onset
@@ -74,5 +73,6 @@ out_path_prefix = "results/"
     tspan=tspan,
     con_mapping=con_mapping,
     stim_schedule=stim_schedule,
-    solver=ISSEulerHeun()
+    solver=ISSEulerHeun(),
+    save_plots=false
 )

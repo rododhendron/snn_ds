@@ -1,0 +1,11 @@
+select_size: 0.0
+n_trials: 10.0
+amplitude: 8.0e-9
+offset_ramp: 0.0
+duration: 0.05
+onset_ramp: 0.0
+start_offset: 1.0
+deviant_idx: 5.0
+p_deviant: 0.1
+standard_idx: 1.0
+isi: 0.3

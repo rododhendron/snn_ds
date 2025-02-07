@@ -10,7 +10,7 @@ using ..Plots
 
 ModelingToolkit.get_continuous_events(sys::SDESystem) = [sys.continuous_events...]
 
-function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, solver, params, stim_params, stim_schedule, tspan, con_mapping=nothing, prob_con=(0.05, 0.05, 0.05, 0.05), remake_prob=nothing)
+function run_exp(path_prefix, name; tols=(1e-5, 1e-5), e_neurons_n=0, i_neurons_n=0, solver, params, stim_params, stim_schedule, tspan, con_mapping=nothing, prob_con=(0.05, 0.05, 0.05, 0.05), remake_prob=nothing, save_plots=false)
     Random.seed!(1234)
     path = path_prefix * name * "/"
     mkpath(path)
@@ -38,11 +38,25 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, solver, params
     @time network = Neuron.make_network(e_neurons, connections)
 
     # add noise
-    noise_eqs = Neuron.instantiate_noise(network, e_neurons, 0.001)
+    noise_eqs = Neuron.instantiate_noise(network, e_neurons, params.sigma)
 
-    @named noise_network = SDESystem(network, noise_eqs, continuous_events=continuous_events(network), observed=observed(network))
+    @show noise_eqs
+    @named sde_network = SDESystem(
+        equations(network),
+        collect(noise_eqs),
+        ModelingToolkit.get_iv(network),
+        unknowns(network),
+        parameters(network),
+        continuous_events=continuous_events(network),
+        observed=observed(network);
+    )
+    # @named noise_network = System([equations(network)...; noise_eqs...], ModelingToolkit.get_iv(network))
+    noise_network = ODESystem(sde_network)
+    [println(e) for e in equations(noise_network)]
+    [println(e) for e in parameters(noise_network)]
+    [println(e) for e in unknowns(noise_network)]
 
-    @time simplified_model = structural_simplify(noise_network; split=false)
+    @time simplified_model = structural_simplify(noise_network; split=true, jac=true)
     @time tree::Utils.ParamTree = Utils.make_param_tree(simplified_model)
     @time res = Utils.fetch_tree(["e_neuron", "R"], tree)
 
@@ -69,7 +83,7 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, solver, params
     # @time sol = solve(prob, SOSRA(); abstol=1e-3, reltol=1e-3, dtmax=1e-3)
     # @time sol = solve(prob, SKenCarp(); abstol=1e-3, reltol=1e-3, dtmax=1e-3)
     # @time sol = solve(prob, ImplicitRKMil(), abstol=1e-2, reltol=-1e-2, dtmax=1e-3)
-    @time sol = solve(prob, solver, abstol=1e-4, reltol=1e-4, dtmax=1e-3)
+    @time sol = solve(prob, solver, abstol=tols[1], reltol=tols[2], dtmax=1e-3, dt=1e-4)
 
     println("tree fetch...")
     # @time res = Utils.fetch_tree(["e_neuron", "R"], tree)
@@ -92,10 +106,10 @@ function run_exp(path_prefix, name; e_neurons_n=0, i_neurons_n=0, solver, params
 
 
     for i in 1:e_neurons_n
-        @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule)
-        @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule)
-        @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule)
-        @time Plots.plot_aggregated_rate(i, sol, name_interpol, tree, stim_schedule)
+        @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
+        @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
+        @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
+        @time Plots.plot_aggregated_rate(i, sol, name_interpol, tree, stim_schedule, true)
     end
 
     res = Utils.fetch_tree(["e_neuron", "R"], tree)

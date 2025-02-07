@@ -57,6 +57,7 @@ function get_stim_params_skeleton()
 end
 
 make_rule(prefix, range::Union{Vector{Int},UnitRange}, suffix, value) = Symbol.(prefix .* "_" .* string.(range) .* "__" .* suffix) .=> value
+make_rule(prefix, id::Int, suffix, value) = Symbol(prefix * "_" * string(id) * "__" * suffix) .=> value
 function override_params(params, rules)
     params_dict = Dict()
     for rule in rules
@@ -121,19 +122,21 @@ capture_neuron_id(neuron::ModelingToolkit.ODESystem)::Int = match(r"[ei]_neuron_
 end
 
 function make_input_rule_neurons(neuron_groups, input_value)
-    rules_target = []
-    rules_group = []
-    for (idx_loc, neuron_group) in neuron_groups
-        push!(rules_target, make_rule("e_neuron", fetch_neuron_ids(neuron_group), "soma__input_value", input_value))
-        push!(rules_target, make_rule("e_neuron", fetch_neuron_ids(neuron_group), "soma__group", idx_loc))
+    rules = []
+    for (group, (idx_loc, neuron_group)) in enumerate(neuron_groups)
+        append!(rules, make_rule("e_neuron", fetch_neuron_ids(neuron_group), "soma__input_value", input_value))
+        append!(rules, make_rule("e_neuron", fetch_neuron_ids(neuron_group), "soma__group", group))
     end
-    return [rules_target...; rules_group...]
+    @show rules
+    return rules
 end
 
 function update_neurons_rules_from_sequence(neurons, stims_params, network_params)
     # update iv value in neurons
     stims_loc = isnothing(stims_params.deviant_idx) ? stims_params.standard_idx : [stims_params.standard_idx, stims_params.deviant_idx]
+    @show stims_loc
     input_neurons_groups = [(idx_loc, get_input_neuron_index((idx_loc,), neurons, stims_params.select_size)) for idx_loc in stims_loc]
+    @show input_neurons_groups
 
     rules = make_input_rule_neurons(input_neurons_groups, stims_params.amplitude)
     (input_neurons_groups, rules)

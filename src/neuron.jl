@@ -59,6 +59,7 @@ end
         duration
         group
         Ibase
+        # noise
         # Ie
         # Ii
     end
@@ -164,9 +165,10 @@ function get_synapse_eq(_synapse_type::Nothing, post_neuron::AbstractODESystem):
 end
 
 function get_noise_eq(neuron, sigma::Float64)
-    # @brownian b
+    # ModelingToolkit.tobrownian(neuron.soma.noise)
     # neuron.soma.noise ~ sigma * b
     neuron.soma.v * sigma
+    # sigma
 end
 
 function make_neuron(params::ComponentArray, soma_model::Model, tspan::Tuple{Int,Int}, name::Symbol, schedule_p)::ODESystem
@@ -217,19 +219,21 @@ function instantiate_connections(id_map, map_connect, post_neurons)::Vector{Pair
 end
 
 function instantiate_noise(network, neurons, sigma)
-    noise_eqs = get_noise_eq.(neurons, Ref(sigma))
+    noise_eqs = get_noise_eq.(neurons, Ref(sigma)) |> Iterators.Stateful
     eqs = equations(network)
-    eqs_placeholder = Vector{Any}(undef, size(equations(network), 1))
+    # eqs_placeholder = Vector{Any}(undef, size(equations(network), 1), size(equations(network), 1))
+    eqs_placeholder::Matrix{Any} = zeros(Float64, size(equations(network), 1), size(equations(network), 1))
     re_differential = r"Differential\(t\)\(((?:e_|i_))neuron_(\d+)₊soma₊v\(t\)\)"
     for i in 1:size(eqs_placeholder, 1)
         eq = eqs[i]
         match_eq = match(re_differential, string(eq.lhs))
         if !isnothing(match_eq)
             (neuron_type, neuron_id) = match_eq.captures
-            noise_eq_idx = findfirst(x -> occursin("$(neuron_type)neuron_$(neuron_id)", string(x)), noise_eqs)
-            eqs_placeholder[i] = noise_eqs[noise_eq_idx]
+            # noise_eq_idx = findfirst(x -> occursin("$(neuron_type)neuron_$(neuron_id)", string(x)), noise_eqs)
+            # eqs_placeholder[i, i] = noise_eqs[noise_eq_idx]
+            eqs_placeholder[i, i] = popfirst!(noise_eqs)
         else
-            eqs_placeholder[i] = 0.0
+            eqs_placeholder[i, i] = 0.0
         end
     end
     eqs_placeholder
