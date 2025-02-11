@@ -136,24 +136,32 @@ function run_exp(path_prefix, name; tols=(1e-5, 1e-5), e_neurons_n=0, i_neurons_
         readouts = [neuron for neuron in e_neurons if neuron.name ∉ input_neurons_name]
         # I have one for now so take first
 
-        readout = first(readouts) |> x -> Utils.fetch_tree([String(x.name), "R"], tree)
-        mr = Utils.hcat_sol_matrix(readout, sol)
-        spikes_readout = Utils.get_spike_timings(mr, sol) |> first # take first as I have one readout
+        if !isempty(readouts)
+            readout = first(readouts) |> x -> Utils.fetch_tree([String(x.name), "R"], tree)
+            mr = Utils.hcat_sol_matrix(readout, sol)
+            spikes_readout = Utils.get_spike_timings(mr, sol) |> first # take first as I have one readout
+            trials = Plots.get_trials_from_schedule(stim_schedule)
+            trials_response = [count(x -> trial_t[1] < x < trial_t[2], spikes_readout) for trial_t in trials]
+            groups = unique(stim_schedule[3, :]) .|> Int
+            groups_stim_idxs = [findall(row -> row == group, stim_schedule[3, :]) for group in groups]
+            groups_spikes = [sum(trials_response[gsi]) / length(trials_response[gsi]) for gsi in groups_stim_idxs]
+            @show groups_spikes
 
-        window = 70e-3 # time in ms
-        dev_match = Utils.get_matching_timings(deviants, spikes_readout, window)
-        standard_match = Utils.get_matching_timings(standards, spikes_readout, window)
+            window = 70e-3 # time in ms
+            dev_match = Utils.get_matching_timings(deviants, spikes_readout, window)
+            standard_match = Utils.get_matching_timings(standards, spikes_readout, window)
 
-        dev_count = count(i -> i > 0, dev_match)
-        standard_count = count(i -> i > 0, standard_match)
+            dev_count = count(i -> i > 0, dev_match)
+            standard_count = count(i -> i > 0, standard_match)
 
-        results["deviant_proportion"] = dev_count / size(deviants, 1)
-        results["standard_proportion"] = standard_count / size(standards, 1)
-        tpnp = dev_count + size(standards, 1) - standard_count
-        accuracy = tpnp / size(stim_schedule, 2)
-        f1_score = 2 * dev_count / (2 * dev_count + standard_count + size(deviants, 1) - dev_count)
-        results["f1_score"] = f1_score
-        results["accuracy"] = accuracy
+            results["deviant_proportion"] = dev_count / size(deviants, 1)
+            results["standard_proportion"] = standard_count / size(standards, 1)
+            tpnp = dev_count + size(standards, 1) - standard_count
+            accuracy = tpnp / size(stim_schedule, 2)
+            f1_score = 2 * dev_count / (2 * dev_count + standard_count + size(deviants, 1) - dev_count)
+            results["f1_score"] = f1_score
+            results["accuracy"] = accuracy
+        end
     end
 
     @show results

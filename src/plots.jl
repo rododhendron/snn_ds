@@ -78,7 +78,7 @@ function plot_agg_value(times, values; xlabel="", ylabel="", title="", name="", 
             points_vec = (g_times[i], g_values[i])
             push!(points, points_vec)
         end
-        series!(ax, points; solid_color=color[group])
+        series!(ax, points; solid_color=(color[group], 0.3))
     end
     vlines!(ax, offset; color=:grey)
     tofile ? save(name, f) : f
@@ -147,6 +147,7 @@ function compute_moving_average(time_dim::Vector{Float64}, values::Vector{Float6
     stops = time_dim .+ time_window / 2 .|> x -> min(x, last(time_dim))
     ranges = zip(starts, stops) |> collect
     counts = ranges |> Map(x -> count(el -> x[1] <= el < x[2], values)) |> collect
+    counts .* (1/time_window)
 end
 
 function plot_spike_rate(i, sol, start, stop, name_interpol, tree::ParamTree, offset, schedule, tofile=false; time_window=1.0)

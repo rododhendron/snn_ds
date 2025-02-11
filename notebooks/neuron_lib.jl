@@ -66,12 +66,12 @@ begin
 	
 	# make schedule
 	# stim_params.n_trials = 20
-	stim_params.amplitude = 8e-9
+	stim_params.amplitude = 1.6e-9
 	stim_params.duration = 50.0e-3
 	stim_params.deviant_idx = 5
 	stim_params.standard_idx = 1
 	stim_params.p_deviant = 0.1
-	stim_params.start_offset = 1
+	stim_params.start_offset = 2
 	stim_params.isi = 300e-3
 	
 	stim_schedule = SNN.Params.generate_schedule(stim_params, tspan)
@@ -81,31 +81,31 @@ begin
 	sch_group = deepcopy(stim_schedule[3, :])
 	
 	# @time params = Neuron.AdExNeuronParams()
-	params.inc_gsyn = 20e-9
-	params.a = 3e-9          # Subthreshold adaptation (A)
-	params.b = 6e-10          # Spiking adaptation (A)
-	params.TauW = 350.0e-3      # Adaptation time constant (s)
-	params.Cm = 3e-10
+	params.inc_gsyn = 15e-9
+	params.a = 2.1e-9          # Subthreshold adaptation (A)
+	params.b = 0.1e-10          # Spiking adaptation (A)
+	params.TauW = 800.0e-3      # Adaptation time constant (s)
+	params.Cm = 3.5e-10
 	
-	params.Ibase = 4.33e-10
+	params.Ibase = 0.9e-10
 	# params.Ibase = 0
-	params.sigma = 0.08
+	params.sigma = 2.2
 
 	rules = []
 	# push!(rules, SNN.Params.make_rule("e_neuron", 3, "soma__Ibase", 2e-10))
 	merged_params = SNN.Params.override_params(params, rules)
+	@show params.b * params.TauW
 end
-
-# ╔═╡ 1e684c34-1818-483d-a0a0-11e044c8fa70
-
 
 # ╔═╡ dba22b66-ba23-4b2d-83bb-d6f32e9a3e59
 begin
 	con_mapping = [
 		(SNN.Params.@connect_neurons [1] SNN.Neuron.AMPA() 2)...;
 		(SNN.Params.@connect_neurons [5] SNN.Neuron.AMPA() 4)...;
-		(SNN.Params.@connect_neurons [2, 4] SNN.Neuron.AMPA() 3)...
-	    # (1, 3, SNN.Neuron.AMPA()),
+		# (SNN.Params.@connect_neurons [1] SNN.Neuron.AMPA() 2)...;
+		# (SNN.Params.@connect_neurons [2] SNN.Neuron.AMPA() 1)...
+		# (SNN.Params.@connect_neurons [1, 2] SNN.Neuron.AMPA() 3)...
+		(SNN.Params.@connect_neurons [4, 2] SNN.Neuron.AMPA() 3)...
 		# (1, 2, SNN.Neuron.GABAa()),
 		# (2, 1, SNN.Neuron.GABAa()),
 	    # (2, 3, SNN.Neuron.AMPA())
@@ -114,8 +114,12 @@ begin
 	#
 	pre_neurons = [row[1] for row in con_mapping]
 	post_neurons = [row[2] for row in con_mapping]
-	e_neurons_n = size(unique([pre_neurons; post_neurons]), 1)
-	# e_neurons_n = 3
+	if !isempty(con_mapping)
+		e_neurons_n = size(unique([pre_neurons; post_neurons]), 1)
+		post_neurons = []
+	else
+		e_neurons_n = 1
+	end
 end
 
 # ╔═╡ c39f4a5c-86ec-4e92-a20f-965cf37fc3cb
@@ -151,7 +155,10 @@ end
 simplified_model.e_neuron_5₊soma₊group
 
 # ╔═╡ 786f52c6-f985-4b6f-b5db-04e24f5d48ce
-(start, stop) = tspan
+begin
+	(start, stop) = tspan
+	start = stim_params.start_offset - 0.1
+end
 
 # ╔═╡ b8a8d05d-8e3c-4ec1-a71c-7930a907daf2
 begin
@@ -188,8 +195,11 @@ SNN.Plots.plot_spikes((spikes_times, []); start=start, stop=stop, color=(:red, :
 # ╔═╡ 337b1d88-5246-40d5-bc86-ee0b5dbc2218
 @time SNN.Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, false)
 
+# ╔═╡ a90c94ad-924c-49d4-9526-78d5c25c9fc7
+size(sol.t)
+
 # ╔═╡ 3ae6f318-21c3-44cf-bb92-2836883229b4
-@time SNN.Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, false; time_window=1e-1)
+@time SNN.Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, false; time_window=0.1)
 
 # ╔═╡ fc6227bc-9036-41d9-8fe3-4f947a227fe0
 @time SNN.Plots.plot_aggregated_rate(i, sol, name_interpol, tree, stim_schedule, false)
@@ -199,6 +209,27 @@ SNN.Plots.plot_spikes((spikes_times, []); start=start, stop=stop, color=(:red, :
 
 # ╔═╡ 1a97fd70-8dc2-45ab-b480-70e7e3651205
 stim_schedule
+
+# ╔═╡ d0fdb66a-c87b-40d5-8caa-04484b0cb5c6
+
+
+# ╔═╡ af3cd829-d768-417a-aaea-cf0dde63ba54
+readout = SNN.Utils.fetch_tree(["e_neuron_1", "R"], tree)
+
+# ╔═╡ baa3784f-70a5-46f7-a8db-d5e102026411
+begin
+	mr = SNN.Utils.hcat_sol_matrix(readout, sol)
+    spikes_readout = SNN.Utils.get_spike_timings(mr, sol) |> first # take first as I have one readout
+    trials = SNN.Plots.get_trials_from_schedule(stim_schedule)
+    trials_response = [count(x -> trial_t[1] < x < trial_t[2], spikes_readout) for trial_t in trials]
+    groups = unique(stim_schedule[3, :]) .|> Int
+    groups_stim_idxs = [findall(row -> row == group, stim_schedule[3, :]) for group in groups]
+	@show groups
+	@show groups_stim_idxs
+    groups_spikes = [sum(trials_response[gsi]) / length(trials_response[gsi]) for gsi in groups_stim_idxs]
+    @show groups_spikes
+	first(diff(groups_spikes)) / sum(groups_spikes)
+end
 
 # ╔═╡ Cell order:
 # ╠═e86eea66-ad59-11ef-2550-cf2588eae9d6
@@ -211,7 +242,6 @@ stim_schedule
 # ╠═33b33822-5476-4759-a100-1b274456aecc
 # ╠═3d936faa-73aa-47fc-be6a-92d0d42d8389
 # ╠═905483e2-78b9-40ed-8421-cd1b406003d9
-# ╠═1e684c34-1818-483d-a0a0-11e044c8fa70
 # ╠═dba22b66-ba23-4b2d-83bb-d6f32e9a3e59
 # ╠═c39f4a5c-86ec-4e92-a20f-965cf37fc3cb
 # ╠═1b5b20d7-3934-406a-9d9e-2af0ad2c13db
@@ -228,7 +258,11 @@ stim_schedule
 # ╠═eb0a72e1-a1c3-463c-a6fc-ade4f0d53eab
 # ╠═dabc4957-f625-40b9-b9b2-3d12bf399d0c
 # ╠═337b1d88-5246-40d5-bc86-ee0b5dbc2218
+# ╠═a90c94ad-924c-49d4-9526-78d5c25c9fc7
 # ╠═3ae6f318-21c3-44cf-bb92-2836883229b4
 # ╠═fc6227bc-9036-41d9-8fe3-4f947a227fe0
 # ╠═63ebbfb4-ae1e-4d80-a08f-ee35a1fdbcfb
 # ╠═1a97fd70-8dc2-45ab-b480-70e7e3651205
+# ╠═d0fdb66a-c87b-40d5-8caa-04484b0cb5c6
+# ╠═af3cd829-d768-417a-aaea-cf0dde63ba54
+# ╠═baa3784f-70a5-46f7-a8db-d5e102026411
