@@ -147,7 +147,7 @@ function compute_moving_average(time_dim::Vector{Float64}, values::Vector{Float6
     stops = time_dim .+ time_window / 2 .|> x -> min(x, last(time_dim))
     ranges = zip(starts, stops) |> collect
     counts = ranges |> Map(x -> count(el -> x[1] <= el < x[2], values)) |> collect
-    counts .* (1/time_window)
+    counts .* (1 / time_window)
 end
 
 function plot_spike_rate(i, sol, start, stop, name_interpol, tree::ParamTree, offset, schedule, tofile=false; time_window=1.0)
@@ -158,7 +158,7 @@ function plot_spike_rate(i, sol, start, stop, name_interpol, tree::ParamTree, of
     spikes = Utils.get_spike_timings(s_bool, sol)
     spike_rate = compute_moving_average(sol.t, spikes, time_window)
 
-    Plots.plot_neuron_value(sol.t, spike_rate, nothing, nothing, offset; start=start, stop=stop, title="spike rate of e $i", name=name_interpol("spike_rate_e_$i.png"), schedule=schedule, is_voltage=false, tofile=tofile)
+    Plots.plot_neuron_value(sol.t, spike_rate, nothing, nothing, offset; start=start, stop=stop, title="spike rate of e $i", name=name_interpol("spike_rate_e_$(i)_window_$(time_window).png"), schedule=schedule, is_voltage=false, tofile=tofile)
 end
 
 function plot_isi(i, sol, start, stop, name_interpol, tree::ParamTree, offset, schedule, tofile=false)
@@ -203,14 +203,14 @@ function plot_adaptation_value(i, sol, start, stop, name_interpol, tree::ParamTr
 end
 
 function plot_heat_map_connection()
-   	heatfig = Figure(size=(900,700))
-	ticks = LinearTicks(size(heatmap_connect, 1))
-	ax_heat = heatfig[1, 1] = Axis(heatfig; title="Connectivity matrix between neurons by synapse type", xlabel="Post synaptic neuron", ylabel="Pre synaptic neuron", xticks=ticks, yticks=ticks)
-	elem_1 = [PolyElement(color = :red, linestyle = nothing)]
-	elem_2 = [PolyElement(color = :blue, linestyle = nothing)]
-	heatmap!(ax_heat, transpose(heatmap_connect); colormap=[:blue, :red], nan_color=:white)
-	heatfig[1, 2] = Legend(heatfig, [elem_1, elem_2], ["AMPA", "GABAa"], framevisible = false)
-	heatfig
+    heatfig = Figure(size=(900, 700))
+    ticks = LinearTicks(size(heatmap_connect, 1))
+    ax_heat = heatfig[1, 1] = Axis(heatfig; title="Connectivity matrix between neurons by synapse type", xlabel="Post synaptic neuron", ylabel="Pre synaptic neuron", xticks=ticks, yticks=ticks)
+    elem_1 = [PolyElement(color=:red, linestyle=nothing)]
+    elem_2 = [PolyElement(color=:blue, linestyle=nothing)]
+    heatmap!(ax_heat, transpose(heatmap_connect); colormap=[:blue, :red], nan_color=:white)
+    heatfig[1, 2] = Legend(heatfig, [elem_1, elem_2], ["AMPA", "GABAa"], framevisible=false)
+    heatfig
 end
 
 end

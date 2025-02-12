@@ -66,12 +66,13 @@ begin
 	
 	# make schedule
 	# stim_params.n_trials = 20
-	stim_params.amplitude = 1.6e-9
+	stim_params.amplitude = 2.2e-9
 	stim_params.duration = 50.0e-3
-	stim_params.deviant_idx = 5
+	stim_params.deviant_idx = 2
 	stim_params.standard_idx = 1
+	stim_params.select_size = 0
 	stim_params.p_deviant = 0.1
-	stim_params.start_offset = 2
+	stim_params.start_offset = 2.5
 	stim_params.isi = 300e-3
 	
 	stim_schedule = SNN.Params.generate_schedule(stim_params, tspan)
@@ -81,15 +82,15 @@ begin
 	sch_group = deepcopy(stim_schedule[3, :])
 	
 	# @time params = Neuron.AdExNeuronParams()
-	params.inc_gsyn = 15e-9
-	params.a = 2.1e-9          # Subthreshold adaptation (A)
-	params.b = 0.1e-10          # Spiking adaptation (A)
-	params.TauW = 800.0e-3      # Adaptation time constant (s)
-	params.Cm = 3.5e-10
+	params.inc_gsyn = 12.2e-9
+	params.a = 0e-9          # Subthreshold adaptation (A)
+	params.b = 9e-12          # Spiking adaptation (A)
+	params.TauW = 1000.0e-3      # Adaptation time constant (s)
+	params.Cm = 4.5e-10
 	
-	params.Ibase = 0.9e-10
+	params.Ibase = 2.4e-10
 	# params.Ibase = 0
-	params.sigma = 2.2
+	params.sigma = 2.4
 
 	rules = []
 	# push!(rules, SNN.Params.make_rule("e_neuron", 3, "soma__Ibase", 2e-10))
@@ -100,12 +101,13 @@ end
 # ╔═╡ dba22b66-ba23-4b2d-83bb-d6f32e9a3e59
 begin
 	con_mapping = [
-		(SNN.Params.@connect_neurons [1] SNN.Neuron.AMPA() 2)...;
-		(SNN.Params.@connect_neurons [5] SNN.Neuron.AMPA() 4)...;
+		# (SNN.Params.@connect_neurons [1] SNN.Neuron.AMPA() 2)...;
+		# (SNN.Params.@connect_neurons [5] SNN.Neuron.AMPA() 4)...;
 		# (SNN.Params.@connect_neurons [1] SNN.Neuron.AMPA() 2)...;
 		# (SNN.Params.@connect_neurons [2] SNN.Neuron.AMPA() 1)...
-		# (SNN.Params.@connect_neurons [1, 2] SNN.Neuron.AMPA() 3)...
-		(SNN.Params.@connect_neurons [4, 2] SNN.Neuron.AMPA() 3)...
+		# (SNN.Params.@connect_neurons [1, 2, 3, 5, 6, 7] SNN.Neuron.AMPA() 4)...
+		(SNN.Params.@connect_neurons [1, 2] SNN.Neuron.AMPA() 3)...
+		# (SNN.Params.@connect_neurons [4, 2] SNN.Neuron.AMPA() 3)...
 		# (1, 2, SNN.Neuron.GABAa()),
 		# (2, 1, SNN.Neuron.GABAa()),
 	    # (2, 3, SNN.Neuron.AMPA())
@@ -124,7 +126,7 @@ end
 
 # ╔═╡ c39f4a5c-86ec-4e92-a20f-965cf37fc3cb
 begin
-	name = "jitter_network_noise"
+	name = "network_base_1_neuron_adaptation"
 	out_path_prefix = "results/"
 end
 
@@ -198,7 +200,13 @@ SNN.Plots.plot_spikes((spikes_times, []); start=start, stop=stop, color=(:red, :
 # ╔═╡ a90c94ad-924c-49d4-9526-78d5c25c9fc7
 size(sol.t)
 
+# ╔═╡ 85809d17-2d85-4de5-b450-6526d0d3cec9
+@time SNN.Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, false; time_window=1.0)
+
 # ╔═╡ 3ae6f318-21c3-44cf-bb92-2836883229b4
+@time SNN.Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, false; time_window=0.05)
+
+# ╔═╡ 6a0f1c02-02c3-4f40-9537-5a82bb773b7b
 @time SNN.Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, false; time_window=0.1)
 
 # ╔═╡ fc6227bc-9036-41d9-8fe3-4f947a227fe0
@@ -221,6 +229,7 @@ begin
 	mr = SNN.Utils.hcat_sol_matrix(readout, sol)
     spikes_readout = SNN.Utils.get_spike_timings(mr, sol) |> first # take first as I have one readout
     trials = SNN.Plots.get_trials_from_schedule(stim_schedule)
+	@show trials
     trials_response = [count(x -> trial_t[1] < x < trial_t[2], spikes_readout) for trial_t in trials]
     groups = unique(stim_schedule[3, :]) .|> Int
     groups_stim_idxs = [findall(row -> row == group, stim_schedule[3, :]) for group in groups]
@@ -259,7 +268,9 @@ end
 # ╠═dabc4957-f625-40b9-b9b2-3d12bf399d0c
 # ╠═337b1d88-5246-40d5-bc86-ee0b5dbc2218
 # ╠═a90c94ad-924c-49d4-9526-78d5c25c9fc7
+# ╠═85809d17-2d85-4de5-b450-6526d0d3cec9
 # ╠═3ae6f318-21c3-44cf-bb92-2836883229b4
+# ╠═6a0f1c02-02c3-4f40-9537-5a82bb773b7b
 # ╠═fc6227bc-9036-41d9-8fe3-4f947a227fe0
 # ╠═63ebbfb4-ae1e-4d80-a08f-ee35a1fdbcfb
 # ╠═1a97fd70-8dc2-45ab-b480-70e7e3651205
