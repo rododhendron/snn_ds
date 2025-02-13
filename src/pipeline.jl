@@ -71,7 +71,7 @@ function run_exp(path_prefix, name; tols=(1e-5, 1e-5), e_neurons_n=0, i_neurons_
         contin_cb = ModelingToolkit.generate_rootfinding_callback([simplified_model.continuous_events...], simplified_model, unknowns(simplified_model), parameters(simplified_model))
         cb = ModelingToolkit.merge_cb(contin_cb, nothing) # 2nd arg is placeholder for discrete callback
 
-        @time prob = SDEProblem(simplified_model, iuparams, tspan, iparams, cb=cb)#, sparse=true)
+        @time prob = SDEProblem(simplified_model, iuparams, tspan, iparams, cb=cb, maxiters=1e7)#, sparse=true)
     # @time prob = SDEProblem{true}(simplified_model, iuparams, tspan, iparams)#, sparse=true)
     else
         println("Remake problem...")

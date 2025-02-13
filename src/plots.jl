@@ -4,6 +4,7 @@ using CairoMakie, ComponentArrays
 using CairoMakie: Axis
 using Makie.GeometryBasics
 using Transducers
+using DataInterpolations
 # using Colors
 
 using ..Utils
@@ -85,19 +86,42 @@ function plot_agg_value(times, values; xlabel="", ylabel="", title="", name="", 
 end
 
 
-function plot_neuron_value(time, value, p, input_current, offset; start=0, scale=identity, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false, schedule=[])
+function plot_neuron_value(time, value, p, input_current, offset; start=0, scale=identity, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false, schedule=[], multi=false)
     f, ax, ax2, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, schedule=schedule, plot_stims=true, yticks=Makie.automatic, yscale=scale)
-    sliced_time, sliced_value = get_slice_xy(time, value, start=start, stop=stop)
+    if multi
+        slices_xy = get_slice_xy.(Ref(time), value, start=start, stop=stop)
+    else
+        slices_xy = get_slice_xy(time, value, start=start, stop=stop)
+    end
     if is_voltage
         hlines!(ax, p.vrest; color=:purple, label="vrest")
         hlines!(ax, p.vthr; color=:yellow, label="vthr")
     end
-    vlines!(ax, [offset]; color=:grey, linestyle=:dashdot)
+    if typeof(offset) == Float64
+        offsets = [offset]
+    else
+        offsets = offset
+    end
+    vlines!(ax, offsets; color=:grey, linestyle=:dashdot)
     if !isnothing(input_current)
         sliced_time, sliced_current = get_slice_xy(time, input_current, start=start, stop=stop)
         lines!(ax2, sliced_time, sliced_current, color=(:black, 0.3))
     end
-    lines!(ax, sliced_time, sliced_value)
+    if multi
+        if length(slices_xy) == 2
+            colors = [:blue, :red]
+        else
+            colors = cgrad(:darktest, length(sliced_value))
+        end
+        @show length(slices_xy)
+        @show colors
+        for i in 1:length(slices_xy)
+            lines!(ax, slices_xy[i][1], slices_xy[i][2], color=colors[i])
+        end
+    else
+        (sliced_time, sliced_value) = slices_xy
+        lines!(ax, sliced_time, sliced_value)
+    end
     xlims!(ax2, (start, stop))
     # axislegend(position=:rt)
     tofile ? save(name, f) : f
@@ -202,7 +226,7 @@ function plot_adaptation_value(i, sol, start, stop, name_interpol, tree::ParamTr
     Plots.plot_neuron_value(sol.t, sol[e_w], nothing, nothing, offset; start=start, stop=stop, title="adaptation of e $i", name=name_interpol("adaptation_e_$i.png"), schedule=schedule, is_voltage=false, tofile=tofile)
 end
 
-function plot_heat_map_connection()
+function plot_heat_map_connection(heatmap_connect)
     heatfig = Figure(size=(900, 700))
     ticks = LinearTicks(size(heatmap_connect, 1))
     ax_heat = heatfig[1, 1] = Axis(heatfig; title="Connectivity matrix between neurons by synapse type", xlabel="Post synaptic neuron", ylabel="Pre synaptic neuron", xticks=ticks, yticks=ticks)
@@ -211,6 +235,31 @@ function plot_heat_map_connection()
     heatmap!(ax_heat, transpose(heatmap_connect); colormap=[:blue, :red], nan_color=:white)
     heatfig[1, 2] = Legend(heatfig, [elem_1, elem_2], ["AMPA", "GABAa"], framevisible=false)
     heatfig
+end
+
+function compute_grand_average(sol, neuron_u, stim_schedule, method=:spikes; sampling_rate=200.0, start=0.0, stop=last(sol.t), offset=0.1, interpol_fn=AkimaInterpolation, time_window=0.1)
+    interpolate_u(u) = interpol_fn(u, sol.t)
+    trials = get_trials_from_schedule(stim_schedule)
+    groups = unique(stim_schedule[3, :]) .|> Int
+    groups_stim_idxs = [findall(row -> row == group, stim_schedule[3, :]) for group in groups]
+    if method == :spikes
+        s_bool = sol[neuron_u] |> Utils.get_spikes_from_r .|> Bool
+        spikes_neuron = Utils.get_spike_timings(s_bool, sol)
+        spike_rate = compute_moving_average(sol.t, spikes_neuron, time_window)
+        interpolation_table = interpolate_u(spike_rate)
+    elseif method == :value
+        interpolation_table = interpolate_u(sol[neuron_u])
+        # for each trial, get list of resampled times
+    end
+    trial_time_delta = first(trials)[2] - first(trials)[1]
+    trials_times = [collect(trial_t[1]-offset:trial_time_delta/sampling_rate:trial_t[2]) for trial_t in trials]
+    # get corresponding values
+    sampled_values = trials_times |> Map(trial_times -> interpolation_table.(trial_times)) |> tcollect
+    # @show sampled_values
+    @assert size(trials_times, 1) == size(sampled_values, 1) == size(stim_schedule, 2)
+    grouped_trials = groups_stim_idxs |> Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |> collect
+    # @show grouped_trials
+    return(grouped_trials, trials_times[1] .- trials[1][1])
 end
 
 end
