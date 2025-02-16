@@ -86,7 +86,7 @@ function plot_agg_value(times, values; xlabel="", ylabel="", title="", name="", 
 end
 
 
-function plot_neuron_value(time, value, p, input_current, offset; start=0, scale=identity, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false, schedule=[], multi=false)
+function plot_neuron_value(time, value, p, input_current, offset; start=0, scale=identity, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false, schedule=[], multi=false, plot_stims=true)
     f, ax, ax2, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, schedule=schedule, plot_stims=true, yticks=Makie.automatic, yscale=scale)
     if multi
         slices_xy = get_slice_xy.(Ref(time), value, start=start, stop=stop)
@@ -246,18 +246,28 @@ function compute_grand_average(sol, neuron_u, stim_schedule, method=:spikes; sam
         s_bool = sol[neuron_u] |> Utils.get_spikes_from_r .|> Bool
         spikes_neuron = Utils.get_spike_timings(s_bool, sol)
         spike_rate = compute_moving_average(sol.t, spikes_neuron, time_window)
+        @show size(s_bool)
+        @show size(spikes_neuron)
+        @show size(spike_rate)
         interpolation_table = interpolate_u(spike_rate)
     elseif method == :value
         interpolation_table = interpolate_u(sol[neuron_u])
         # for each trial, get list of resampled times
     end
-    trial_time_delta = first(trials)[2] - first(trials)[1]
-    trials_times = [collect(trial_t[1]-offset:trial_time_delta/sampling_rate:trial_t[2]) for trial_t in trials]
+    @show trials[1]
+    trial_time_delta = first(trials)[2] - first(trials)[1] + offset
+    trials_times = [collect(trial_t[1]-offset:1/sampling_rate:trial_t[2]) for trial_t in trials] |> Map(x -> x[1:floor(Int, sampling_rate * trial_time_delta)]) |> collect
     # get corresponding values
     sampled_values = trials_times |> Map(trial_times -> interpolation_table.(trial_times)) |> tcollect
     # @show sampled_values
     @assert size(trials_times, 1) == size(sampled_values, 1) == size(stim_schedule, 2)
-    grouped_trials = groups_stim_idxs |> Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |> collect
+    @show size(sampled_values)
+    @show size(trials_times)
+    @show size(sampled_values[groups_stim_idxs[1]])
+    @show size(sampled_values[groups_stim_idxs[2]])
+    grouped_trials = groups_stim_idxs |>
+        Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |>
+        collect
     # @show grouped_trials
     return(grouped_trials, trials_times[1] .- trials[1][1])
 end
