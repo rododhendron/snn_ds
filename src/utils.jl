@@ -100,7 +100,7 @@ function get_spikes_from_r(r_vector::Vector)
     for i in axes(r_vector, 1)
         res_vector[i] = floor(r_vector[max(i - 1, 1)]) < floor(r_vector[i]) ? 1.0 : 0.0
     end
-    @show sum(res_vector)
+    # @show sum(res_vector)
     res_vector
 end
 

@@ -61,19 +61,14 @@ end
 function plot_agg_value(times, values; xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false, schedule=[], offset=0)
     f, ax, ax2, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title)
 
-    @show size(times)
-    @show size(values)
     colormap = :Set1_5
     groups = unique(schedule[3, :])
     # color = resample_cmap(colormap, size(groups, 1))
     color = [:blue, :red]
     for group in 1:length(groups)
         idxs = findall(x -> x == group, schedule[3, :])
-        @show idxs
         g_times = times[idxs]
         g_values = values[idxs]
-        @show size(g_times)
-        @show size(g_values)
         points = []
         for i in axes(g_times, 1)
             points_vec = (g_times[i], g_values[i])
@@ -87,7 +82,8 @@ end
 
 
 function plot_neuron_value(time, value, p, input_current, offset; start=0, scale=identity, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false, schedule=[], multi=false, plot_stims=true)
-    f, ax, ax2, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, schedule=schedule, plot_stims=true, yticks=Makie.automatic, yscale=scale)
+    call_ax2 = isnothing(input_current) ? false : true
+    f, ax, ax2, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, schedule=schedule, plot_stims=plot_stims, yticks=Makie.automatic, yscale=scale, call_ax2=call_ax2)
     if multi
         slices_xy = get_slice_xy.(Ref(time), value, start=start, stop=stop)
     else
@@ -106,6 +102,7 @@ function plot_neuron_value(time, value, p, input_current, offset; start=0, scale
     if !isnothing(input_current)
         sliced_time, sliced_current = get_slice_xy(time, input_current, start=start, stop=stop)
         lines!(ax2, sliced_time, sliced_current, color=(:black, 0.3))
+        xlims!(ax2, (start, stop))
     end
     if multi
         if length(slices_xy) == 2
@@ -113,8 +110,6 @@ function plot_neuron_value(time, value, p, input_current, offset; start=0, scale
         else
             colors = cgrad(:darktest, length(sliced_value))
         end
-        @show length(slices_xy)
-        @show colors
         for i in 1:length(slices_xy)
             lines!(ax, slices_xy[i][1], slices_xy[i][2], color=colors[i])
         end
@@ -122,7 +117,6 @@ function plot_neuron_value(time, value, p, input_current, offset; start=0, scale
         (sliced_time, sliced_value) = slices_xy
         lines!(ax, sliced_time, sliced_value)
     end
-    xlims!(ax2, (start, stop))
     # axislegend(position=:rt)
     tofile ? save(name, f) : f
 end
@@ -167,11 +161,11 @@ function plot_excitator_value(i, sol, start, stop, name_interpol, tree::ParamTre
 end
 
 function compute_moving_average(time_dim::Vector{Float64}, values::Vector{Float64}, time_window::Float64)
-    starts = time_dim .- time_window / 2 .|> x -> max(x, first(time_dim))
-    stops = time_dim .+ time_window / 2 .|> x -> min(x, last(time_dim))
+    starts = time_dim .- time_window / 2 .|> x -> max(x, first(time_dim)) # get start if greater that first sol.t (check boundaries)
+    stops = time_dim .+ time_window / 2 .|> x -> min(x, last(time_dim)) # same for last sol.t
     ranges = zip(starts, stops) |> collect
-    counts = ranges |> Map(x -> count(el -> x[1] <= el < x[2], values)) |> collect
-    counts .* (1 / time_window)
+    counts = ranges |> Map(x -> count(el -> x[1] <= el < x[2], values)) |> collect # count the number of times value occurs between start and stop
+    counts ./ time_window # convert in Hz
 end
 
 function plot_spike_rate(i, sol, start, stop, name_interpol, tree::ParamTree, offset, schedule, tofile=false; time_window=1.0)
@@ -226,6 +220,15 @@ function plot_adaptation_value(i, sol, start, stop, name_interpol, tree::ParamTr
     Plots.plot_neuron_value(sol.t, sol[e_w], nothing, nothing, offset; start=start, stop=stop, title="adaptation of e $i", name=name_interpol("adaptation_e_$i.png"), schedule=schedule, is_voltage=false, tofile=tofile)
 end
 
+function plot_heatmap(values; xlabel="", ylabel="", title="", tofile=true, name="")
+    # values is shape (vector x, y and z)
+    heatfig = Figure(size=(900, 700))
+    ax_heat = heatfig[1, 1] = Axis(heatfig; title=title, xlabel=xlabel, ylabel=ylabel)
+    hm = heatmap!(ax_heat, values..., colormap = :thermal, colorrange=(0.0, 0.2))
+    Colorbar(heatfig[1, 2], hm)
+    tofile ? save(name, heatfig) : heatfig
+end
+
 function plot_heat_map_connection(heatmap_connect)
     heatfig = Figure(size=(900, 700))
     ticks = LinearTicks(size(heatmap_connect, 1))
@@ -246,30 +249,29 @@ function compute_grand_average(sol, neuron_u, stim_schedule, method=:spikes; sam
         s_bool = sol[neuron_u] |> Utils.get_spikes_from_r .|> Bool
         spikes_neuron = Utils.get_spike_timings(s_bool, sol)
         spike_rate = compute_moving_average(sol.t, spikes_neuron, time_window)
-        @show size(s_bool)
-        @show size(spikes_neuron)
-        @show size(spike_rate)
         interpolation_table = interpolate_u(spike_rate)
     elseif method == :value
         interpolation_table = interpolate_u(sol[neuron_u])
         # for each trial, get list of resampled times
     end
-    @show trials[1]
     trial_time_delta = first(trials)[2] - first(trials)[1] + offset
     trials_times = [collect(trial_t[1]-offset:1/sampling_rate:trial_t[2]) for trial_t in trials] |> Map(x -> x[1:floor(Int, sampling_rate * trial_time_delta)]) |> collect
     # get corresponding values
     sampled_values = trials_times |> Map(trial_times -> interpolation_table.(trial_times)) |> tcollect
     # @show sampled_values
     @assert size(trials_times, 1) == size(sampled_values, 1) == size(stim_schedule, 2)
-    @show size(sampled_values)
-    @show size(trials_times)
-    @show size(sampled_values[groups_stim_idxs[1]])
-    @show size(sampled_values[groups_stim_idxs[2]])
     grouped_trials = groups_stim_idxs |>
         Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |>
         collect
     # @show grouped_trials
     return(grouped_trials, trials_times[1] .- trials[1][1])
+end
+
+function csi(values, offsetted_times, target_start, target_stop; is_voltage=false)
+	times_to_take = findall(time_t -> target_start <= time_t <= target_stop, offsetted_times)
+	# compute mean for each values
+	values_to_compare = values |> Map(x -> x[times_to_take]) |> Map(x -> sum(x) / length(x)) |> collect
+	values_diff = (values_to_compare[2] - values_to_compare[1]) / (values_to_compare[1] + values_to_compare[2])
 end
 
 end

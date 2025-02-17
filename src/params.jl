@@ -134,9 +134,7 @@ end
 function update_neurons_rules_from_sequence(neurons, stims_params, network_params)
     # update iv value in neurons
     stims_loc = isnothing(stims_params.deviant_idx) ? stims_params.standard_idx : [stims_params.standard_idx, stims_params.deviant_idx]
-    @show stims_loc
     input_neurons_groups = [(idx_loc, get_input_neuron_index((idx_loc,), neurons, stims_params.select_size)) for idx_loc in stims_loc]
-    @show input_neurons_groups
 
     rules = make_input_rule_neurons(input_neurons_groups, stims_params.amplitude)
     (input_neurons_groups, rules)
