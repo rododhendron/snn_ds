@@ -62,16 +62,16 @@ end
 
 # ╔═╡ 905483e2-78b9-40ed-8421-cd1b406003d9
 begin
-	tspan = (0, 100)
+	tspan = (0, 30)
 	
 	# make schedule
 	# stim_params.n_trials = 20
-	stim_params.amplitude = 1.8e-9
+	stim_params.amplitude = 5.0e-9
 	stim_params.duration = 50.0e-3
 	stim_params.deviant_idx = 2
-	stim_params.standard_idx = 0
+	stim_params.standard_idx = 1
 	stim_params.select_size = 0
-	stim_params.p_deviant = 0.15
+	stim_params.p_deviant = 0.10
 	stim_params.start_offset = 2.5
 	stim_params.isi = 300e-3
 	
@@ -82,15 +82,15 @@ begin
 	sch_group = deepcopy(stim_schedule[3, :])
 	
 	# @time params = Neuron.AdExNeuronParams()
-	params.inc_gsyn = 8.2e-9
-	params.a = 0e-9          # Subthreshold adaptation (A)
-	params.b = 9e-12          # Spiking adaptation (A)
-	params.TauW = 1000.0e-3      # Adaptation time constant (s)
-	params.Cm = 4.5e-10
+	params.inc_gsyn = 20.0e-9
+	params.a = 3.0e-9          # Subthreshold adaptation (A)
+	params.b = 8.0e-10          # Spiking adaptation (A)
+	params.TauW = 600.0e-3      # Adaptation time constant (s)
+	params.Cm = 3.0e-10
 	
-	params.Ibase = 2.4e-10
+	params.Ibase = 4.33e-10
 	# params.Ibase = 0
-	params.sigma = 2.4
+	params.sigma = 2.0
 
 	rules = []
 	# push!(rules, SNN.Params.make_rule("e_neuron", 3, "soma__Ibase", 2e-10))
@@ -201,7 +201,7 @@ SNN.Plots.plot_spikes((spikes_times, []); start=start, stop=stop, color=(:red, :
 size(sol.t)
 
 # ╔═╡ 85809d17-2d85-4de5-b450-6526d0d3cec9
-@time SNN.Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, false; time_window=1.0)
+@time SNN.Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, false; time_window=0.1)
 
 # ╔═╡ 3ae6f318-21c3-44cf-bb92-2836883229b4
 @time SNN.Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, false; time_window=0.05)
@@ -222,7 +222,7 @@ stim_schedule
 
 
 # ╔═╡ af3cd829-d768-417a-aaea-cf0dde63ba54
-readout = SNN.Utils.fetch_tree(["e_neuron_1", "R"], tree)
+readout = SNN.Utils.fetch_tree(["e_neuron_3", "R"], tree)
 
 # ╔═╡ baa3784f-70a5-46f7-a8db-d5e102026411
 begin
@@ -308,40 +308,136 @@ trials_times
 sum(sampled_values[1:3])
 
 # ╔═╡ a5a05532-9ebe-454e-983c-5a74436e3e3f
-(grouped_trials, offsetted_times) = SNN.Plots.compute_grand_average(sol, readout_v, stim_schedule, :value; interpol_fn=AkimaInterpolation)
+(grouped_trials, offsetted_times) = SNN.Plots.compute_grand_average(sol, readout_v, stim_schedule, :value; interpol_fn=AkimaInterpolation, sampling_rate=20000)
 
 # ╔═╡ 0bc9dd59-e29f-4854-ba6b-697adde0105d
 grouped_trials[1]
+
+# ╔═╡ 9eebabbb-e0f6-4444-a63a-d750be61523d
+grouped_trials
+
+# ╔═╡ 23a9143a-d394-41ed-89de-505c86a64de0
+offsetted_times
+
+# ╔═╡ 0ef1fd05-7ed6-422b-8a87-c4c8011f5435
+sum(rand(239, 10))
 
 # ╔═╡ 71612ba8-c43c-490c-8581-def0085eedf2
 typeof(64)
 
 # ╔═╡ 5174d0e7-9d37-42a7-a13f-30d8f71a52ef
-@time SNN.Plots.plot_neuron_value(offsetted_times, grouped_trials, nothing, nothing, [0.0, 0.05]; start=-0.1, stop=maximum(offsetted_times), title="gdavg e 3", name=name_interpol("gdavg_e_3.png"), schedule=stim_schedule, tofile=false, ylabel="voltage (in V)", xlabel="Time (in s)", multi=true)
+@time SNN.Plots.plot_neuron_value(offsetted_times, grouped_trials, nothing, nothing, [0.0, 0.05]; start=-0.1, stop=maximum(offsetted_times), title="gdavg e 3", name=name_interpol("gdavg_e_3.png"), schedule=stim_schedule, tofile=false, ylabel="voltage (in V)", xlabel="Time (in s)", multi=true, plot_stims=false)
 
 # ╔═╡ 672a833a-5c91-4397-8ce2-fbcf343beb75
 sol[first(readout)]
 
 # ╔═╡ 96951fbb-ba5a-4606-ac04-e3c9bd70c0d2
-(agg_rate, _) = SNN.Plots.compute_grand_average(sol, first(readout), stim_schedule, :spikes; interpol_fn=AkimaInterpolation)
+(agg_rate, ot) = SNN.Plots.compute_grand_average(sol, first(readout), stim_schedule, :spikes; interpol_fn=AkimaInterpolation, time_window=0.01, sampling_rate=20000)
+
+# ╔═╡ a0923e08-6ad3-45c9-9d0e-3a5d78338749
+function compute_grand_average(sol, neuron_u, stim_schedule, method=:spikes; sampling_rate=200.0, start=0.0, stop=last(sol.t), offset=0.1, interpol_fn=AkimaInterpolation, time_window=0.1)
+	interpolate_u(u) = interpol_fn(u, sol.t)
+    trials = SNN.Plots.get_trials_from_schedule(stim_schedule)
+    groups = unique(stim_schedule[3, :]) .|> Int
+    groups_stim_idxs = [findall(row -> row == group, stim_schedule[3, :]) for group in groups]
+    if method == :spikes
+        s_bool = sol[neuron_u] |> SNN.Utils.get_spikes_from_r .|> Bool
+        spikes_neuron = SNN.Utils.get_spike_timings(s_bool, sol)
+		@show size(spikes_neuron)
+		@show spikes_neuron
+        spike_rate = SNN.Plots.compute_moving_average(sol.t, spikes_neuron, time_window)
+		@show spike_rate[1:20]
+        @show size(s_bool)
+        @show size(spikes_neuron)
+        @show size(spike_rate)
+        interpolation_table = interpolate_u(spike_rate)
+    elseif method == :value
+        interpolation_table = interpolate_u(sol[neuron_u])
+        # for each trial, get list of resampled times
+    end
+    @show trials[1]
+    trial_time_delta = first(trials)[2] - first(trials)[1] + offset
+    trials_times = [collect(trial_t[1]-offset:1/sampling_rate:trial_t[2]) for trial_t in trials] |> Map(x -> x[1:floor(Int, sampling_rate * trial_time_delta)]) |> collect
+    # get corresponding values
+    sampled_values = trials_times |> Map(trial_times -> interpolation_table.(trial_times)) |> tcollect
+    # @show sampled_values
+    @assert size(trials_times, 1) == size(sampled_values, 1) == size(stim_schedule, 2)
+    @show size(sampled_values)
+    @show size(trials_times)
+    @show size(sampled_values[groups_stim_idxs[1]])
+    @show size(sampled_values[groups_stim_idxs[2]])
+    grouped_trials = groups_stim_idxs |>
+        Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |>
+        collect
+    # @show grouped_trials
+    return(grouped_trials, trials_times[1] .- trials[1][1])
+end
+
+# ╔═╡ 46073470-7f50-4cd4-98a7-3eb5043e6bab
+(agg_rate_1, ot_1) = compute_grand_average(sol, first(readout), stim_schedule, :spikes; interpol_fn=AkimaInterpolation, time_window=0.1, sampling_rate=2000)
 
 # ╔═╡ 81eaed1e-b1f8-4129-92e1-d6b33bc4106e
 size(agg_rate[1])
 
-# ╔═╡ 6107f3f1-1e0c-4ec4-b5ea-49216e5472ff
+# ╔═╡ 4e1edae3-c304-43f1-8aa6-8fee655436e7
+first(readout)
 
+# ╔═╡ 6107f3f1-1e0c-4ec4-b5ea-49216e5472ff
+agg_rate
 
 # ╔═╡ 696d3954-6373-4d3e-8ff5-764814cd4bec
-@time SNN.Plots.plot_neuron_value(offsetted_times, agg_rate, nothing, nothing, [0.0, 0.05]; start=-0.1, stop=maximum(offsetted_times), title="gdavg e 3", name=name_interpol("gdavg_e_3.png"), schedule=stim_schedule, tofile=false, multi=true)
+@time SNN.Plots.plot_neuron_value(ot, agg_rate, nothing, nothing, [0.0, 0.05]; start=-0.1, stop=maximum(offsetted_times), title="Spike rate average per trials, deviant in red, standard in blue.", name=name_interpol("gdavg_e_3.png"), schedule=stim_schedule, plot_stims=false, tofile=false, multi=true, ylabel="spike rate (in Hz)", xlabel="time (in s)")
+
+# ╔═╡ c0021651-ed41-4b04-b9f2-5b282aa2553f
+function csi(values, offsetted_times, target_start, target_stop; is_voltage=false)
+	times_to_take = findall(time_t -> target_start <= time_t <= target_stop, offsetted_times)
+	# compute mean for each values
+	values_to_compare = values |> Map(x -> x[times_to_take]) |> Map(x -> sum(x) / length(x)) |> collect
+	values_diff = (values_to_compare[2] - values_to_compare[1]) / (values_to_compare[1] + values_to_compare[2])
+end
 
 # ╔═╡ a0b9ea82-a228-4e8a-bba3-cd255708380f
-sampled_values[1][1] + sampled_values[2][1] + sampled_values[3][1]
+SNN.Plots.csi(agg_rate, ot, 0.0, 0.1)
+
+# ╔═╡ 3996e2c9-905f-424b-8acb-f9ba49346a17
+csi(agg_rate, ot, 0.0, 0.25)
+
+# ╔═╡ a9aecee8-45bc-4f6e-b68c-5884c6d8a58c
+CSI_v = csi(grouped_trials, ot, 0.0, 0.1, is_voltage=true)
+
+# ╔═╡ b5cb6703-e19a-4e22-b9a8-dd8d037448eb
+
+
+# ╔═╡ ed473424-9f60-480b-9669-46a37648043f
+csi([[0, 0, 0, 0], [0, 0, 0, 1]], [1, 2, 3, 4], 0, 5)
 
 # ╔═╡ 80646a5b-ab83-4214-979a-152815b42f51
 sampled_values[1:3]
 
 # ╔═╡ 6f92bcf3-1f6f-46dd-91ff-871b448b27e3
-0.35 * 200
+matmat = [
+	1 2 3 4 5;
+	6 7 8 9 10;
+	11 12 13 14 15
+] .|> Float64
+
+# ╔═╡ eebd69b0-f702-40cb-ab3a-f2b1fd154c0d
+heatmap(matmat)
+
+# ╔═╡ 70321d6d-8ec0-43a3-934b-35548e11819e
+SNN.Plots.plot_heatmap(matmat, tofile=false, xlabel="ok")
+
+# ╔═╡ 300947b8-d5a3-468e-a42e-3b5c77f3122c
+length(1:2:10)
+
+# ╔═╡ 7ca48fda-9ea0-4018-b8af-5225a4b73cda
+heatmap_values = ([1.3e-10, 1.5e-10], [4.0e-12, 7.0e-12], Any[0.012666132363720597 0.01653196021779987; -0.044990909793167166 -0.06343718548031357])
+
+# ╔═╡ 3c6a202b-2b0a-43cc-99bc-2d05d50ea4b6
+SNN.Plots.plot_heatmap(
+    heatmap_values,
+	title="csi over params search", name="results/base_3_adaptation_scan_a_b.png", tofile=false, xlabel="a", ylabel="b"
+)
 
 # ╔═╡ Cell order:
 # ╠═e86eea66-ad59-11ef-2550-cf2588eae9d6
@@ -395,13 +491,29 @@ sampled_values[1:3]
 # ╠═7e7f24b1-5ed7-48ea-ab91-061a6383cc29
 # ╠═e46d4fb1-63ee-48a8-adde-f284ffe71cf8
 # ╠═a5a05532-9ebe-454e-983c-5a74436e3e3f
+# ╠═9eebabbb-e0f6-4444-a63a-d750be61523d
+# ╠═23a9143a-d394-41ed-89de-505c86a64de0
+# ╠═0ef1fd05-7ed6-422b-8a87-c4c8011f5435
 # ╠═71612ba8-c43c-490c-8581-def0085eedf2
 # ╠═5174d0e7-9d37-42a7-a13f-30d8f71a52ef
 # ╠═672a833a-5c91-4397-8ce2-fbcf343beb75
 # ╠═96951fbb-ba5a-4606-ac04-e3c9bd70c0d2
+# ╠═a0923e08-6ad3-45c9-9d0e-3a5d78338749
+# ╠═46073470-7f50-4cd4-98a7-3eb5043e6bab
 # ╠═81eaed1e-b1f8-4129-92e1-d6b33bc4106e
+# ╠═4e1edae3-c304-43f1-8aa6-8fee655436e7
 # ╠═6107f3f1-1e0c-4ec4-b5ea-49216e5472ff
 # ╠═696d3954-6373-4d3e-8ff5-764814cd4bec
+# ╠═c0021651-ed41-4b04-b9f2-5b282aa2553f
 # ╠═a0b9ea82-a228-4e8a-bba3-cd255708380f
+# ╠═3996e2c9-905f-424b-8acb-f9ba49346a17
+# ╠═a9aecee8-45bc-4f6e-b68c-5884c6d8a58c
+# ╠═b5cb6703-e19a-4e22-b9a8-dd8d037448eb
+# ╠═ed473424-9f60-480b-9669-46a37648043f
 # ╠═80646a5b-ab83-4214-979a-152815b42f51
 # ╠═6f92bcf3-1f6f-46dd-91ff-871b448b27e3
+# ╠═eebd69b0-f702-40cb-ab3a-f2b1fd154c0d
+# ╠═70321d6d-8ec0-43a3-934b-35548e11819e
+# ╠═300947b8-d5a3-468e-a42e-3b5c77f3122c
+# ╠═7ca48fda-9ea0-4018-b8af-5225a4b73cda
+# ╠═3c6a202b-2b0a-43cc-99bc-2d05d50ea4b6
