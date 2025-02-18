@@ -3,17 +3,26 @@ module Device
 export to_device_fn
 
 
-function to_device_fn(;backend="")
+function to_device_fn(; backend="")
     if backend != ""
-        @eval begin
-            using CUDA, AMDGPU
-        end
-        if CUDA.functional()
-            return CuArray
-        elseif AMDGPU.functional()
-            return ROCArray
+        if backend == "CUDA"
+            @eval begin
+                using CUDA#, AMDGPU
+            end
+            if CUDA.functional()
+                return CuArray
+            else
+                return x -> x
+            end
         else
-            return x -> x
+            @eval begin
+                using AMDGPU
+            end
+            if AMDGPU.functional()
+                return ROCArray
+            else
+                return x -> x
+            end
         end
     else
         return x -> x

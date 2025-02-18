@@ -22,17 +22,19 @@ function run_exp(path_prefix, name;
     con_mapping=nothing,
     prob_con=(0.05, 0.05, 0.05, 0.05),
     remake_prob=nothing,
+    model=nothing,
     save_plots=false,
     fetch_csi=false,
-    to_device=x->x
+    to_device=x -> x,
+    l=nothing
 )
     Random.seed!(1234)
     path = path_prefix * name * "/"
     mkpath(path)
     exp_name = path * name
 
-    @time e_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("e_neuron_$(i)"), stim_schedule) for i in 1:e_neurons_n]
-    @time i_neurons = [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)"), stim_schedule) for i in 1:i_neurons_n]
+    @time e_neurons = @lock l [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("e_neuron_$(i)"), stim_schedule) for i in 1:e_neurons_n]
+    @time i_neurons = @lock l [Neuron.make_neuron(params, Neuron.Soma, tspan, Symbol("i_neuron_$(i)"), stim_schedule) for i in 1:i_neurons_n]
 
     (input_neurons, rules) = Params.update_neurons_rules_from_sequence(e_neurons, stim_params, params)
     (input_grp, input_neuron_vec) = zip(input_neurons...)
@@ -50,35 +52,37 @@ function run_exp(path_prefix, name;
     end
     connections = Neuron.instantiate_connections(id_map, map_connect, e_neurons)
 
-    @time network = Neuron.make_network(e_neurons, connections)
-
-    # add noise
-    noise_eqs = Neuron.instantiate_noise(network, e_neurons, params.sigma)
-
-    @named sde_network = SDESystem(
-        equations(network),
-        collect(noise_eqs),
-        ModelingToolkit.get_iv(network),
-        unknowns(network),
-        parameters(network),
-        continuous_events=continuous_events(network),
-        observed=observed(network);
-    )
-    # @named noise_network = System([equations(network)...; noise_eqs...], ModelingToolkit.get_iv(network))
-    noise_network = ODESystem(sde_network)
     # [println(e) for e in equations(noise_network)]
     # [println(e) for e in parameters(noise_network)]
     # [println(e) for e in unknowns(noise_network)]
 
-    @time simplified_model = structural_simplify(noise_network; split=true, jac=true)
-    @time tree::Utils.ParamTree = Utils.make_param_tree(simplified_model)
-    @time res = Utils.fetch_tree(["e_neuron", "R"], tree)
-
-    # infere params
     @time uparams = Neuron.get_adex_neuron_uparams_skeleton(Float64)
+    if isnothing(remake_prob)
+        @time network = Neuron.make_network(e_neurons, connections)
 
-    @time iparams, iuparams = Neuron.map_params(simplified_model, overriden_params, uparams; match_nums=true)
+        # add noise
+        noise_eqs = Neuron.instantiate_noise(network, e_neurons, params.sigma)
 
+        @named sde_network = SDESystem(
+            equations(network),
+            collect(noise_eqs),
+            ModelingToolkit.get_iv(network),
+            unknowns(network),
+            parameters(network),
+            continuous_events=continuous_events(network),
+            observed=observed(network);
+        )
+        # @named noise_network = System([equations(network)...; noise_eqs...], ModelingToolkit.get_iv(network))
+        noise_network = ODESystem(sde_network)
+        @time simplified_model = structural_simplify(noise_network; split=true, jac=true)
+        @time tree::Utils.ParamTree = Utils.make_param_tree(simplified_model)
+        @time res = Utils.fetch_tree(["e_neuron", "R"], tree)
+        @time iparams, iuparams = Neuron.map_params(simplified_model, overriden_params, uparams; match_nums=true)
+    else
+        simplified_model = model
+        @time tree = Utils.make_param_tree(model)
+        @time iparams, iuparams = Neuron.map_params(model, overriden_params, uparams; match_nums=true)
+    end
 
     if isnothing(remake_prob)
         println("Make problem...")
@@ -89,7 +93,7 @@ function run_exp(path_prefix, name;
     # @time prob = SDEProblem{true}(simplified_model, iuparams, tspan, iparams)#, sparse=true)
     else
         println("Remake problem...")
-        @time prob = remake(remake_prob; u0=iuparams |> to_device, p=iparams |> to_device)
+        @time prob = remake(remake_prob; u0=iuparams, p=iparams)
     end
 
     println("Solving...")
@@ -99,18 +103,6 @@ function run_exp(path_prefix, name;
     # @time sol = solve(prob, ImplicitRKMil(), abstol=1e-2, reltol=-1e-2, dtmax=1e-3)
     @time sol = solve(prob, solver, abstol=tols[1], reltol=tols[2], dtmax=1e-3, dt=1e-4)
 
-    println("tree fetch...")
-    # @time res = Utils.fetch_tree(["e_neuron", "R"], tree)
-    # @time ris = Utils.fetch_tree(["i_neuron", "R"], tree)
-
-    println("hcat solutions")
-    @time mes = reduce(hcat, sol[res])
-    # @time mis = reduce(hcat, sol[ris])
-
-    println("get spikes timings")
-    @time spikes_e = Utils.get_spike_timings(mes, sol)
-    # @time spikes_i = Utils.get_spike_timings(mis, sol)
-
     (start, stop) = tspan
 
     name_prefix = exp_name * ""
@@ -118,81 +110,84 @@ function run_exp(path_prefix, name;
 
     println("plotting")
 
-
-    for i in 1:e_neurons_n
-        # @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
-        # @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
-        # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
-        # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.1)
-        # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.05)
-        # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.01)
-        (grouped_trials, offsetted_times) = Plots.compute_grand_average(sol, Plots.fetch_tree_neuron_value("e_neuron", i, "v", tree) |> first, stim_schedule, :value; interpol_fn=AkimaInterpolation, sampling_rate=20000)
-        @time Plots.plot_neuron_value(offsetted_times, grouped_trials, nothing, nothing, [0.0, 0.05]; start=-0.1, stop=maximum(offsetted_times), title="gdavg voltage neuron $(i)", name=name_interpol("gdavg_e_3_voltage.png"), schedule=stim_schedule, tofile=true, ylabel="voltage (in V)", xlabel="Time (in s)", multi=true, plot_stims=false)
-        (agg_rate, ot) = Plots.compute_grand_average(sol, Plots.fetch_tree_neuron_value("e_neuron", i, "R", tree) |> first, stim_schedule, :spikes; interpol_fn=AkimaInterpolation, time_window=0.01, sampling_rate=20000)
-        @time Plots.plot_neuron_value(ot, agg_rate, nothing, nothing, [0.0, 0.05]; start=-0.1, stop=maximum(offsetted_times), title="gdavg spike rate neuron $(i)", name=name_interpol("gdavg_e_3_rate.png"), schedule=stim_schedule, tofile=true, ylabel="spike rate (in Hz)", xlabel="Time (in s)", multi=true, plot_stims=false)
-        # @time Plots.plot_aggregated_rate(i, sol, name_interpol, tree, stim_schedule, true)
-    end
-
-    res = Utils.fetch_tree(["e_neuron", "R"], tree)
-    ma = Utils.hcat_sol_matrix(res, sol)
-    spikes_times = Utils.get_spike_timings(ma, sol)
-    Utils.write_params(params; name=name_interpol("params.yaml"))
-    Utils.write_params(stim_params; name=name_interpol("stim_params.yaml"))
-    Utils.write_params(iparams; name=name_interpol("iparams.yaml"))
-    Utils.write_params(iuparams; name=name_interpol("iuparams.yaml"))
-    # sol_stripped = SciMLBase.strip_solution(sol)
-    # Utils.write_sol(sol; name=name_interpol("sol.jld2"))
-    Plots.plot_spikes((spikes_times, []); start=start, stop=stop, color=(:red, :blue), height=400, title="Network activity", xlabel="time (in s)", ylabel="neuron index", name=name_interpol("rs.png"), schedule=stim_schedule)
-
-    @time groups = Utils.fetch_tree(["e_neuron", "group"], tree)
-    stim_groups = !isnothing(stim_params.deviant_idx) ? [stim_params.standard_idx; stim_params.deviant_idx] : stim_params.standard_idx
-
     results = Dict()
-    csi_returned = nothing
-
-    if !isnothing(stim_params.deviant_idx) && stim_params.deviant_idx > 0
-        standards = [stim[1] for stim in eachcol(stim_schedule) if stim[3] in stim_params.standard_idx]
-        deviants = [stim[1] for stim in eachcol(stim_schedule) if stim[3] in stim_params.deviant_idx]
-        #readout |> count dev on standard |> ok
-
-        readouts = [neuron for neuron in e_neurons if neuron.name ∉ input_neurons_name]
-        # I have one for now so take first
-
-        if !isempty(readouts)
-            readout = first(readouts) |> x -> Utils.fetch_tree([String(x.name), "R"], tree)
-            mr = Utils.hcat_sol_matrix(readout, sol)
-            spikes_readout = Utils.get_spike_timings(mr, sol) |> first # take first as I have one readout
-            trials = Plots.get_trials_from_schedule(stim_schedule)
-            trials_response = [count(x -> trial_t[1] < x < trial_t[2], spikes_readout) for trial_t in trials]
-            groups = unique(stim_schedule[3, :]) .|> Int
-            groups_stim_idxs = [findall(row -> row == group, stim_schedule[3, :]) for group in groups]
-            groups_spikes = [sum(trials_response[gsi]) / length(trials_response[gsi]) for gsi in groups_stim_idxs]
-            # @show groups_spikes
-
-            window = 70e-3 # time in ms
-            dev_match = Utils.get_matching_timings(deviants, spikes_readout, window)
-            standard_match = Utils.get_matching_timings(standards, spikes_readout, window)
-
-            dev_count = count(i -> i > 0, dev_match)
-            standard_count = count(i -> i > 0, standard_match)
-
-            results["deviant_proportion"] = dev_count / size(deviants, 1)
-            results["standard_proportion"] = standard_count / size(standards, 1)
-            tpnp = dev_count + size(standards, 1) - standard_count
-            accuracy = tpnp / size(stim_schedule, 2)
-            f1_score = 2 * dev_count / (2 * dev_count + standard_count + size(deviants, 1) - dev_count)
-            results["f1_score"] = f1_score
-            results["accuracy"] = accuracy
-
-            (agg_rate, ot) = Plots.compute_grand_average(sol, first(readout), stim_schedule, :spikes; interpol_fn=AkimaInterpolation, time_window=0.01, sampling_rate=20000)
-            results["csi_returned"] = Plots.csi(agg_rate, ot, 0.0, 0.1)
-            # @show results["csi_returned"]
+    try
+        Utils.write_params(params; name=name_interpol("params.yaml"))
+        Utils.write_params(stim_params; name=name_interpol("stim_params.yaml"))
+        Utils.write_params(iparams; name=name_interpol("iparams.yaml"))
+        Utils.write_params(iuparams; name=name_interpol("iuparams.yaml"))
+        for i in 1:e_neurons_n
+            # @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
+            # @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
+            # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
+            # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.1)
+            # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.05)
+            # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.01)
+            (grouped_trials, offsetted_times) = Plots.compute_grand_average(sol, Plots.fetch_tree_neuron_value("e_neuron", i, "v", tree) |> first, stim_schedule, :value; interpol_fn=AkimaInterpolation, sampling_rate=20000)
+            @time Plots.plot_neuron_value(offsetted_times, grouped_trials, nothing, nothing, [0.0, 0.05]; start=-0.1, stop=maximum(offsetted_times), title="gdavg voltage neuron $(i)", name=name_interpol("gdavg_e_3_voltage.png"), schedule=stim_schedule, tofile=true, ylabel="voltage (in V)", xlabel="Time (in s)", multi=true, plot_stims=false)
+            (agg_rate, ot) = Plots.compute_grand_average(sol, Plots.fetch_tree_neuron_value("e_neuron", i, "R", tree) |> first, stim_schedule, :spikes; interpol_fn=AkimaInterpolation, time_window=0.01, sampling_rate=20000)
+            @time Plots.plot_neuron_value(ot, agg_rate, nothing, nothing, [0.0, 0.05]; start=-0.1, stop=maximum(offsetted_times), title="gdavg spike rate neuron $(i)", name=name_interpol("gdavg_e_3_rate.png"), schedule=stim_schedule, tofile=true, ylabel="spike rate (in Hz)", xlabel="Time (in s)", multi=true, plot_stims=false)
+            # @time Plots.plot_aggregated_rate(i, sol, name_interpol, tree, stim_schedule, true)
         end
+
+        res = Utils.fetch_tree(["e_neuron", "R"], tree)
+        ma = Utils.hcat_sol_matrix(res, sol)
+        spikes_times = Utils.get_spike_timings(ma, sol)
+        # sol_stripped = SciMLBase.strip_solution(sol)
+        # Utils.write_sol(sol; name=name_interpol("sol.jld2"))
+        Plots.plot_spikes((spikes_times, []); start=start, stop=stop, color=(:red, :blue), height=400, title="Network activity", xlabel="time (in s)", ylabel="neuron index", name=name_interpol("rs.png"), schedule=stim_schedule)
+
+        @time groups = Utils.fetch_tree(["e_neuron", "group"], tree)
+        stim_groups = !isnothing(stim_params.deviant_idx) ? [stim_params.standard_idx; stim_params.deviant_idx] : stim_params.standard_idx
+
+        csi_returned = nothing
+
+        if !isnothing(stim_params.deviant_idx) && stim_params.deviant_idx > 0
+            standards = [stim[1] for stim in eachcol(stim_schedule) if stim[3] in stim_params.standard_idx]
+            deviants = [stim[1] for stim in eachcol(stim_schedule) if stim[3] in stim_params.deviant_idx]
+            #readout |> count dev on standard |> ok
+
+            readouts = [neuron for neuron in e_neurons if neuron.name ∉ input_neurons_name]
+            # I have one for now so take first
+
+            if !isempty(readouts)
+                readout = first(readouts) |> x -> Utils.fetch_tree([String(x.name), "R"], tree)
+                mr = Utils.hcat_sol_matrix(readout, sol)
+                spikes_readout = Utils.get_spike_timings(mr, sol) |> first # take first as I have one readout
+                trials = Plots.get_trials_from_schedule(stim_schedule)
+                trials_response = [count(x -> trial_t[1] < x < trial_t[2], spikes_readout) for trial_t in trials]
+                groups = unique(stim_schedule[3, :]) .|> Int
+                groups_stim_idxs = [findall(row -> row == group, stim_schedule[3, :]) for group in groups]
+                groups_spikes = [sum(trials_response[gsi]) / length(trials_response[gsi]) for gsi in groups_stim_idxs]
+                # @show groups_spikes
+
+                window = 70e-3 # time in ms
+                dev_match = Utils.get_matching_timings(deviants, spikes_readout, window)
+                standard_match = Utils.get_matching_timings(standards, spikes_readout, window)
+
+                dev_count = count(i -> i > 0, dev_match)
+                standard_count = count(i -> i > 0, standard_match)
+
+                results["deviant_proportion"] = dev_count / size(deviants, 1)
+                results["standard_proportion"] = standard_count / size(standards, 1)
+                tpnp = dev_count + size(standards, 1) - standard_count
+                accuracy = tpnp / size(stim_schedule, 2)
+                f1_score = 2 * dev_count / (2 * dev_count + standard_count + size(deviants, 1) - dev_count)
+                results["f1_score"] = f1_score
+                results["accuracy"] = accuracy
+
+                (agg_rate, ot) = Plots.compute_grand_average(sol, first(readout), stim_schedule, :spikes; interpol_fn=AkimaInterpolation, time_window=0.01, sampling_rate=20000)
+                results["csi_returned"] = Plots.csi(agg_rate, ot, 0.0, 0.1)
+                # @show results["csi_returned"]
+            end
+        end
+
+        @show results
+
+        Utils.write_params(results; name=name_interpol("result_metrics.yaml"))
+    catch
+        results["csi_returned"] = 0.0
     end
-
-    @show results
-
-    Utils.write_params(results; name=name_interpol("result_metrics.yaml"))
 
     if fetch_csi
         (sol, simplified_model, prob, results["csi_returned"])
