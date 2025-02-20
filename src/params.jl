@@ -69,7 +69,7 @@ function override_params(params, rules)
 end
 
 function generate_schedule(params::ComponentVector, tspan::Tuple{Int,Int})::Array{Float64,2}
-    Random.seed!(1234)
+    # Random.seed!(1234)
     # generate sequence detecting paradigm case of deviant or many standard
     # output of shape : (t_start, onset_duration, group)
     n_trials = div((tspan[2] - params.start_offset), (params.isi + params.duration))
@@ -129,7 +129,7 @@ function make_input_rule_neurons(neuron_groups, input_value)
         append!(rules, make_rule("e_neuron", fetch_neuron_ids(neuron_group), "soma__input_value", input_value))
         append!(rules, make_rule("e_neuron", fetch_neuron_ids(neuron_group), "soma__group", group))
     end
-    @show rules
+    # @show rules
     return rules
 end
 
