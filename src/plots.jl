@@ -224,7 +224,7 @@ function plot_heatmap(values; xlabel="", ylabel="", title="", tofile=true, name=
     # values is shape (vector x, y and z)
     heatfig = Figure(size=(900, 700))
     ax_heat = heatfig[1, 1] = Axis(heatfig; title=title, xlabel=xlabel, ylabel=ylabel)
-    hm = heatmap!(ax_heat, values..., colormap = :thermal, colorrange=(0.0, 0.2))
+    hm = heatmap!(ax_heat, values..., colormap=:thermal, colorrange=(0.0, 0.4))
     Colorbar(heatfig[1, 2], hm)
     tofile ? save(name, heatfig) : heatfig
 end
@@ -261,17 +261,17 @@ function compute_grand_average(sol, neuron_u, stim_schedule, method=:spikes; sam
     # @show sampled_values
     @assert size(trials_times, 1) == size(sampled_values, 1) == size(stim_schedule, 2)
     grouped_trials = groups_stim_idxs |>
-        Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |>
-        collect
+                     Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |>
+                     collect
     # @show grouped_trials
-    return(grouped_trials, trials_times[1] .- trials[1][1])
+    return (grouped_trials, trials_times[1] .- trials[1][1])
 end
 
 function csi(values, offsetted_times, target_start, target_stop; is_voltage=false)
-	times_to_take = findall(time_t -> target_start <= time_t <= target_stop, offsetted_times)
-	# compute mean for each values
-	values_to_compare = values |> Map(x -> x[times_to_take]) |> Map(x -> sum(x) / length(x)) |> collect
-	values_diff = (values_to_compare[2] - values_to_compare[1]) / (values_to_compare[1] + values_to_compare[2])
+    times_to_take = findall(time_t -> target_start <= time_t <= target_stop, offsetted_times)
+    # compute mean for each values
+    values_to_compare = values |> Map(x -> x[times_to_take]) |> Map(x -> sum(x) / length(x)) |> collect
+    values_diff = (values_to_compare[2] - values_to_compare[1]) / (values_to_compare[1] + values_to_compare[2])
 end
 
 end
