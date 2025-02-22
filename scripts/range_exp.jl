@@ -20,19 +20,18 @@ using SharedArrays
     # Optional: Set a custom memory limit for worker processes:
     Distributed.myid() != 1 && memory_limit!(8 * 1000^3) # 8 GB
 
-    runmode = OnLocalhost(n=10)
 end
 
 
-display(worker_start_command(runmode))
-
 # Add some workers and initialize with all `@always_everywhere` code:
 old_nprocs = nprocs()
-_, n = runworkers(runmode)
+const N = 10
+const max_proc = old_nprocs + N
+_, n = runworkers(OnLocalhost(;n=N))
 @wait_while nprocs() < old_nprocs + n
 ensure_procinit()
 
-pool = ppt_worker_pool()
+pool = FlexWorkerPool(; withmyid=false, init_workers=true)
 display(pool)
 display(worker_resources())
 
@@ -40,8 +39,6 @@ ThreadPinning.distributed_pinthreads(:numa)
 @show ThreadPinning.distributed_getcpuids()
 
 UID_g = randstring(6)
-
-# pool = CachingPool(2:nworkers() |> collect)
 
 # Function to monitor and kill processes
 @always_everywhere function monitor_and_kill(memory_limit)
@@ -197,13 +194,16 @@ end
     con_mapping,
     tols
 )
-function spawn_workers(runmode)
-    task, n = runworkers(runmode)
-    ensure_procinit()
+function spawn_workers()
+    workers_to_launch = max_proc - nprocs()
+    if workers_to_launch > 0
+        task, n = runworkers(OnLocalhost(;n=workers_to_launch))
+        # ensure_procinit()
+    end
     sleep(5)
-    spawn_workers(runmode)
+    spawn_workers()
 end
-Threads.@spawn spawn_workers(runmode)
+Threads.@spawn spawn_workers()
 
 
 returns = @showprogress pmap(row -> run_model_for_ij!(row), pool, indices; retry_delays=ones(4))
