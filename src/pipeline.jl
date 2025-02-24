@@ -1,5 +1,6 @@
 module Pipeline
 
+using SciMLBase: AbstractODEProblem
 using Symbolics, ModelingToolkit, DifferentialEquations, ComponentArrays, LinearAlgebra, LinearSolve, SciMLBase, DataInterpolations
 using Random
 
@@ -10,26 +11,26 @@ using ..Plots
 
 ModelingToolkit.get_continuous_events(sys::SDESystem) = [sys.continuous_events...]
 
-function run_exp(path_prefix, name;
-    tols=(1e-5, 1e-5),
-    e_neurons_n=0,
-    i_neurons_n=0,
+function run_exp(path_prefix::String, name::String;
+    tols::Tuple{Float64,Float64}=(1e-5, 1e-5),
+    e_neurons_n::Int=0,
+    i_neurons_n::Int=0,
     solver,
-    params,
-    stim_params,
-    stim_schedule,
-    tspan,
-    con_mapping=nothing,
-    prob_con=(0.05, 0.05, 0.05, 0.05),
-    remake_prob=nothing,
-    model=nothing,
-    save_plots=false,
-    fetch_csi=false,
-    to_device=x -> x,
-    l=nothing,
-    neurons=(nothing, nothing),
-    nout=false
-)
+    params::ComponentVector,
+    stim_params::ComponentVector,
+    stim_schedule::Array{Float64,2},
+    tspan::Tuple{Int,Int},
+    con_mapping::Union{Nothing,Vector{Any}}=nothing,
+    prob_con::Tuple{Float64,Float64,Float64,Float64}=(0.05, 0.05, 0.05, 0.05),
+    remake_prob::Union{Nothing,AbstractODEProblem}=nothing,
+    model::Union{Nothing,ModelingToolkit.AbstractODESystem}=nothing,
+    save_plots::Bool=false,
+    fetch_csi::Bool=false,
+    to_device::Function=x -> x,
+    l::Union{Nothing,Base.AbstractLock}=nothing,
+    neurons::Tuple{Union{Nothing,Vector{ODESystem}},Union{Nothing,Vector{ODESystem}}}=(nothing, nothing),
+    nout::Bool=false
+)# where {T<:Neuron.SynapseType}
     path = path_prefix * name * "/"
     mkpath(path)
     exp_name = path * name

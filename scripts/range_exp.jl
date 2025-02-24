@@ -3,80 +3,86 @@ using DrWatson # have to install it globally
 quickactivate(@__DIR__) # needed to load project env
 
 using ParallelProcessingTools
-@always_everywhere include("../src/SNN.jl")
+include("../src/SNN.jl")
 
 using Symbolics, ModelingToolkit, ComponentArrays, LinearAlgebra, LinearSolve, Random
 using Base.Threads
 using Distributed
 using SharedArrays
-@always_everywhere using DifferentialEquations, ProgressMeter
-
-@always_everywhere begin
-    using ParallelProcessingTools, Distributed
-    using Statistics
-
-    import ThreadPinning
-
-    # Optional: Set a custom memory limit for worker processes:
-    Distributed.myid() != 1 && memory_limit!(8 * 1000^3) # 8 GB
-
-end
-
+using DifferentialEquations, ProgressMeter
 
 # Add some workers and initialize with all `@always_everywhere` code:
 old_nprocs = nprocs()
 const N = 10
 const max_proc = old_nprocs + N
-_, n = runworkers(OnLocalhost(;n=N))
-@wait_while nprocs() < old_nprocs + n
-ensure_procinit()
+# _, n = runworkers(OnLocalhost(; n=N))
+cluster = ppt_cluster_manager()
 
-pool = FlexWorkerPool(; withmyid=false, init_workers=true)
+pool = FlexWorkerPool(; withmyid=true, init_workers=true)
+
+addprocs(N; exeflags="-L src/SNN.jl")
+@onprocs workers() include("src/SNN.jl")
+
+push!.(Ref(pool), workers())
+import ThreadPinning
+
 display(pool)
 display(worker_resources())
-
 ThreadPinning.distributed_pinthreads(:numa)
-@show ThreadPinning.distributed_getcpuids()
+# @show ThreadPinning.distributed_getcpuids()
 
 UID_g = randstring(6)
 
 # Function to monitor and kill processes
-@always_everywhere function monitor_and_kill(memory_limit)
-    pid = Sys.getpid()  # Get the current process ID
-    # Use a system command to check memory usage (example for Linux)
-    mem_usage = parse(Int, read(`ps -o rss= -p $pid`, String))  # Memory in KB
-    # println(mem_usage)
-    if mem_usage > memory_limit
-        println("Killing worker $w (PID: $pid) for exceeding memory limit")
-        # kill(pid)
-        rmprocs(pid)  # Remove the worker from the pool
-        println("killed $pid")
-    end
-end
 
 # gpu = SNN.Device.to_device_fn(; backend="amd")
 gpu = x -> x
 # gpu = ROCArray
 
-@always_everywhere const tspan = (0, 100)
+@always_everywhere begin #let SNN = SNN
+    using ParallelProcessingTools, Distributed
+    using DifferentialEquations, ProgressMeter
+    using Statistics
 
-# e_neurons_n = 5
 
-# a & b
-@always_everywhere const param_a_range = 1.0e-10:1.0e-10:6.0e-9
-@always_everywhere const param_b_range = 2.0e-12:1e-12:9.0e-11
+    function monitor_and_kill(memory_limit)
+        pid = Sys.getpid()  # Get the current process ID
+        # Use a system command to check memory usage (example for Linux)
+        mem_usage = parse(Int, read(`ps -o rss= -p $pid`, String))  # Memory in KB
+        # println("mem usage: $(mem_usage) / $(memory_limit) on worker $pid")
+        # println(mem_usage)
+        if mem_usage > memory_limit
+            println("Killing worker (PID: $pid) for exceeding memory limit")
+            @fetchfrom 1 rmprocs(pid)  # Remove the worker from the pool
+            exit()
+            println("killed $pid")
+        end
+    end
 
-# param_to_change_a = :a
-@always_everywhere const param_to_change_b = :b
+    memlimit = 8 * 1000^2
+    # Optional: Set a custom memory limit for worker processes:
+    Distributed.myid() != 1 && memlimit
+    tspan = (0, 100)
 
-# @everywhere const param_a_range = 0.01:0.05:2.0
-# param_b_range = 0.1:0.1:3.0
-@always_everywhere const param_to_change_a = :a
-# param_to_change_b = :sigma
+    # e_neurons_n = 5
 
-@show exp_size = length(param_a_range) * length(param_b_range)
+    # a & b
+    # param_a_range = 1.0e-10:1.0e-10:6.0e-9
+    # param_b_range = 2.0e-12:1e-12:9.0e-11
 
-@always_everywhere begin
+    param_a_range = 1.0e-10:0.5e-10:6.0e-10
+    param_b_range = 50:50:1200
+
+    # param_to_change_a = :a
+    # param_to_change_b = :b
+    param_to_change_b = :TauW
+
+    # @everywhere const param_a_range = 0.01:0.05:2.0
+    # param_b_range = 0.1:0.1:3.0
+    # param_to_change_a = :a
+    param_to_change_a = :Cm
+    # param_to_change_b = :sigma
+
     # make schedule
     UID = $UID_g
     stim_params = SNN.Params.get_stim_params_skeleton()
@@ -99,7 +105,7 @@ gpu = x -> x
 
     params.Ibase = 2.4e-10
     # params.Ibase = 0
-    params.sigma = 1.2
+    params.sigma = 1.0
 
     con_mapping_nested = [
         (SNN.Params.@connect_neurons [1, 2] SNN.Neuron.AMPA() 3),
@@ -115,11 +121,67 @@ gpu = x -> x
     tols = (1e-3, 1e-3)
 
     solver = DRI1()
+
+    run_model_for_ij!(indices) = run_model!(
+        params,
+        e_neurons_n,
+        indices,
+        param_a_range,
+        param_b_range,
+        stim_params,
+        stim_schedule,
+        tspan,
+        con_mapping,
+        tols
+    )
+
+    function run_model!(
+        params,
+        e_neurons_n,
+        indices,
+        param_a_range,
+        param_b_range,
+        stim_params,
+        stim_schedule,
+        tspan,
+        con_mapping,
+        tols
+    )
+        monitor_and_kill(memlimit)
+        (i, j) = indices
+        new_pars = deepcopy(params)
+        new_pars[param_to_change_a] = param_i = param_a_range[i]
+        new_pars[param_to_change_b] = param_j = param_b_range[j]
+
+        name = "base_3_adaptation_" * string(param_to_change_a) * "=" * string(param_i) * "_" * string(param_to_change_b) * "=" * string(param_j)
+        out_path_prefix = "results/$(UID)/"
+        csi_i = SNN.Pipeline.run_exp(
+            out_path_prefix, name;
+            e_neurons_n=e_neurons_n,
+            params=new_pars,
+            stim_params=stim_params,
+            stim_schedule=stim_schedule,
+            tspan=tspan,
+            con_mapping=con_mapping,
+            solver=solver,
+            tols=tols,
+            fetch_csi=true,
+            nout=true
+            # to_device=gpu,
+            # remake_prob=new_prob,
+            # model=simplified_model,
+            # l=l,
+            # neurons=neurons
+        )
+        # @show csi_i
+        csi_i
+    end
 end
 # solver = ISSEulerHeun()
 # solver = SKenCarp()
 # solver = WangLi3SMil_B()
 
+ensure_procinit()
 (sol, simplified_model, prob, csi, neurons) = SNN.Pipeline.run_exp(
     "tmp/", "tmp";
     e_neurons_n=e_neurons_n,
@@ -137,68 +199,18 @@ end
 pb_len = length(param_b_range)
 pa_len = length(param_a_range)
 
-Random.seed!(1235)
+Random.seed!(1234)
 indices = [(i, j) for i in 1:pa_len, j in 1:pb_len]
 
-@always_everywhere function run_model!(
-    params,
-    e_neurons_n,
-    indices,
-    param_a_range,
-    param_b_range,
-    stim_params,
-    stim_schedule,
-    tspan,
-    con_mapping,
-    tols
-)
-    monitor_and_kill(10_000_000)
-    (i, j) = indices
-    new_pars = deepcopy(params)
-    new_pars[param_to_change_a] = param_i = param_a_range[i]
-    new_pars[param_to_change_b] = param_j = param_b_range[j]
-
-    name = "base_3_adaptation_" * string(param_to_change_a) * "=" * string(param_i) * "_" * string(param_to_change_b) * "=" * string(param_j)
-    out_path_prefix = "results/$(UID)/"
-    csi_i = SNN.Pipeline.run_exp(
-        out_path_prefix, name;
-        e_neurons_n=e_neurons_n,
-        params=new_pars,
-        stim_params=stim_params,
-        stim_schedule=stim_schedule,
-        tspan=tspan,
-        con_mapping=con_mapping,
-        solver=solver,
-        tols=tols,
-        fetch_csi=true,
-        nout=true
-        # to_device=gpu,
-        # remake_prob=new_prob,
-        # model=simplified_model,
-        # l=l,
-        # neurons=neurons
-    )
-    # @show csi_i
-    csi_i
-end
-
-@always_everywhere run_model_for_ij!(indices) = run_model!(
-    params,
-    e_neurons_n,
-    indices,
-    param_a_range,
-    param_b_range,
-    stim_params,
-    stim_schedule,
-    tspan,
-    con_mapping,
-    tols
-)
 function spawn_workers()
+    println("try spawning...")
     workers_to_launch = max_proc - nprocs()
     if workers_to_launch > 0
-        task, n = runworkers(OnLocalhost(;n=workers_to_launch))
-        # ensure_procinit()
+        ps = addprocs(workers_to_launch)
+        @onprocs ps include("src/SNN.jl")
+        ensure_procinit(ps)
+        push!.(Ref(pool), ps)
+        println("added workers $(ps)")
     end
     sleep(5)
     spawn_workers()
@@ -206,7 +218,9 @@ end
 Threads.@spawn spawn_workers()
 
 
+@show pool
 returns = @showprogress pmap(row -> run_model_for_ij!(row), pool, indices; retry_delays=ones(4))
+# returns = @showprogress @onprocs(row -> run_model_for_ij!(row), indices; retry_delays=ones(4))
 @show returns
 
 heatmap_values = (collect(param_a_range), collect(param_b_range), returns)

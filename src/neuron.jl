@@ -105,7 +105,7 @@ end
     end
 end
 
-function get_adex_neuron_params_skeleton(type::DataType)#, sch_t, sch_group, sch_onset)
+function get_adex_neuron_params_skeleton(type::DataType)::ComponentVector#, sch_t, sch_group, sch_onset)
     ComponentArray{type}(
         vrest=-65.0e-3,     # Resting membrane potential (V)
         vthr=-50.0e-3,      # Spike threshold (V)
@@ -135,7 +135,7 @@ function get_adex_neuron_params_skeleton(type::DataType)#, sch_t, sch_group, sch
     )
 end
 
-function get_adex_neuron_uparams_skeleton(type::DataType)
+function get_adex_neuron_uparams_skeleton(type::DataType)::ComponentVector
     ComponentVector{type}(
         v=-65.0e-3,
         w=0.0e-9,
@@ -164,7 +164,7 @@ function get_synapse_eq(_synapse_type::Nothing, post_neuron::AbstractODESystem):
     nothing
 end
 
-function get_noise_eq(neuron, sigma::Float64)
+function get_noise_eq(neuron::AbstractODESystem, sigma::Float64)::Num
     # ModelingToolkit.tobrownian(neuron.soma.noise)
     # neuron.soma.noise ~ sigma * b
     neuron.soma.v * sigma
@@ -206,7 +206,7 @@ struct ConnectionRule
     prob::Float64
 end
 
-function instantiate_connections(id_map, map_connect, post_neurons)::Vector{Pair{Vector{Equation},Vector{Equation}}}
+function instantiate_connections(id_map::Vector{Any}, map_connect::Matrix{Any}, post_neurons::Vector{ODESystem})::Vector{Pair{Vector{Equation},Vector{Equation}}}
     all_callbacks::Vector{Pair{Vector{Equation},Vector{Equation}}} = []
     for (i, neuron) in id_map
         post_neurons_syn = map_connect[i, :]
@@ -218,7 +218,7 @@ function instantiate_connections(id_map, map_connect, post_neurons)::Vector{Pair
     all_callbacks
 end
 
-function instantiate_noise(network, neurons, sigma)
+function instantiate_noise(network::ODESystem, neurons::Vector{ODESystem}, sigma::Float64)::Matrix{Any}
     noise_eqs = get_noise_eq.(neurons, Ref(sigma)) |> Iterators.Stateful
     eqs = equations(network)
     # eqs_placeholder = Vector{Any}(undef, size(equations(network), 1), size(equations(network), 1))
@@ -239,7 +239,10 @@ function instantiate_noise(network, neurons, sigma)
     eqs_placeholder
 end
 
-function infer_connection_from_map(neurons::Vector{T}, mapping) where {T<:AbstractODESystem}
+function infer_connection_from_map(
+    neurons::Vector{T} where {T<:AbstractODESystem},
+    mapping::Vector{Any}
+)::Tuple{Vector{Any},Array{Union{Nothing,Any}}}
     # take neurons, assign ids, map connections from dict map
     n_neurons = length(neurons)
     id_map = [(i, neurons[i]) for i in 1:n_neurons]
@@ -249,7 +252,7 @@ function infer_connection_from_map(neurons::Vector{T}, mapping) where {T<:Abstra
     end
     (id_map, map_connect)
 end
-function init_connection_map(e_neurons::Vector{T}, i_neurons::Vector{T}, connection_rules::Vector{ConnectionRule}) where {T<:AbstractODESystem}
+function init_connection_map(e_neurons::Vector{T}, i_neurons::Vector{T}, connection_rules::Vector{ConnectionRule})::Tuple{Vector{Any},Array{Union{Nothing,SynapseType}}} where {T<:AbstractODESystem}
     neurons = vcat(e_neurons, i_neurons)
     n_neurons = length(e_neurons) + length(i_neurons)
     id_map = [(i, neurons[i]) for i in 1:n_neurons]
@@ -274,7 +277,7 @@ end
 get_varsym_from_syskey(param::SymbolicUtils.BasicSymbolic)::Symbol = split(param |> Symbol |> String, "₊") |> last |> Symbol
 get_varsym_from_syskey(param::Symbol)::Symbol = split(param |> String, "₊") |> last |> Symbol
 get_varsym_from_syskey(param::SubString)::Symbol = split(param, "₊") |> last |> Symbol
-varsym_to_vec(param::Symbol)::Vector = split(param |> String, "₊")
+varsym_to_vec(param::Symbol)::Vector{SubString} = split(param |> String, "₊")
 
 function match_param(to_match, to_find, match_nums::Bool)::Bool
     if match_nums
