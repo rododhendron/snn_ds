@@ -68,7 +68,50 @@ function override_params(params, rules)
     )
 end
 
-function generate_schedule(params::ComponentVector, tspan::Tuple{Int,Int})::Array{Float64,2}
+function deviant_stim_rule(stims, i)
+    return i > 1 && stims[i - 1] == 2 && stims[i] == 2
+end
+
+function standard_stim_rule(stims)
+    n_consecutive = 5
+    standards_idxs = findall(stim -> stim == 1, stims)
+    standards_idxs_consecutive_mask = standards_idxs |>
+        Consecutive(2; step=1) |>
+        Map(x -> x[2] - x[1]) |>
+        Consecutive(n_consecutive; step=1) |>
+        Map(stim_group -> all(stim -> stim == 1, stim_group)) |>
+        collect
+end
+
+function filter_stims(stims::Vector)
+    new_stims = stims
+    # assuming deviant stim value == 2
+    for i in eachindex(new_stims)
+        # check if deviant stim has a deviant stim preceding
+        if deviant_stim_rule(new_stims, i)
+            new_stims[i] = 1 # putting a standard instead of a deviant
+        end
+    end
+    # @show new_stims
+    # for N consecutive standards, change the last one as a deviant
+
+    # for each standard with N consecutive following values, replace by deviant
+    standards_idxs_consecutive_mask = standard_stim_rule(new_stims)
+    for i in eachindex(standards_idxs_consecutive_mask)
+        if i + 5 < length(stims) && standards_idxs_consecutive_mask[i]
+            new_stims[i + 5] = 2
+        end
+    end
+    @show new_stims
+    new_stims
+end
+
+function check_stims(stims)
+    # return true if wrong schedule
+    return any(standard_stim_rule(stims)) && any(deviant_stim_rule.(Ref(stims), 1:length(stims)))
+end
+
+function generate_schedule(params::ComponentVector, tspan::Tuple{Int,Int}; is_pseudo_random::Bool=true)::Array{Float64,2}
     # Random.seed!(1234)
     # generate sequence detecting paradigm case of deviant or many standard
     # output of shape : (t_start, onset_duration, group)
@@ -86,12 +129,24 @@ function generate_schedule(params::ComponentVector, tspan::Tuple{Int,Int})::Arra
     stim_distribution = Categorical(prob_vector)
     stims = rand(stim_distribution, Int(n_trials))
 
-    schedule = Array{Float64,2}(undef, 3, size(stims, 1))
+    if is_pseudo_random && !isnothing(params.deviant_idx)
+        prev_stims = zeros(eltype(stims), size(stims))
+        filtered_stims = stims
+        while check_stims(filtered_stims)
+            global filtered_stims = filter_stims(filtered_stims)
+        end
+    else
+        filtered_stims = stims
+    end
+
+    @show filtered_stims
+
+    schedule = Array{Float64,2}(undef, 3, size(filtered_stims, 1))
 
     for i in 1:size(stims, 1)
         @inbounds schedule[1, i] = (i - 1) * (params.isi + params.duration) + params.start_offset
         @inbounds schedule[2, i] = params.duration
-        @inbounds schedule[3, i] = stims[i]
+        @inbounds schedule[3, i] = filtered_stims[i]
     end
 
     return schedule

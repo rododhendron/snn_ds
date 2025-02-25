@@ -188,12 +188,23 @@ function plot_isi(i, sol, start, stop, name_interpol, tree::ParamTree, offset, s
     Plots.plot_neuron_value(spikes[3:end], isi[2:end], nothing, nothing, offset; scale=Makie.pseudolog10, start=start, stop=stop, title="Interspike intervals of e $i", name=name_interpol("isi_e_$i.png"), schedule=schedule, is_voltage=false, tofile=tofile)
 end
 
-function get_trials_from_schedule(schedule_p)
+function get_trials_from_schedule(schedule_p; comp_std_dev=true)
     trial_starts = schedule_p[1, :]
     trial_periods = diff(trial_starts)
     mean_period = reduce(+, trial_periods) / length(trial_periods)
-    trial_stops = trial_starts .+ mean_period
-    zip(trial_starts, trial_stops) |> collect
+    if comp_std_dev
+        # for each deviant trial idx
+        dev_trials = findall(trial -> trial == 2, schedule_p[3, :])
+        # fetch previous standard
+        std_trials = dev_trials .- 1
+        trials_to_take = vcat(std_trials, dev_trials) |> unique |> sort
+        filtered_trial_starts = schedule_p[1, trials_to_take]
+        trial_stops = filtered_trial_starts .+ mean_period
+        zip(filtered_trial_starts, trial_stops) |> collect
+    else
+        trial_stops = trial_starts .+ mean_period
+        zip(trial_starts, trial_stops) |> collect
+    end
 end
 
 function trial_to_idxs(trial_ranges, sol_t::Vector{Float64})
@@ -224,7 +235,7 @@ function plot_heatmap(values; xlabel="", ylabel="", title="", tofile=true, name=
     # values is shape (vector x, y and z)
     heatfig = Figure(size=(900, 700))
     ax_heat = heatfig[1, 1] = Axis(heatfig; title=title, xlabel=xlabel, ylabel=ylabel)
-    hm = heatmap!(ax_heat, values..., colormap=:thermal, colorrange=(0.0, 0.4))
+    hm = heatmap!(ax_heat, values..., colormap=:thermal)
     Colorbar(heatfig[1, 2], hm)
     tofile ? save(name, heatfig) : heatfig
 end
@@ -243,8 +254,11 @@ end
 function compute_grand_average(sol, neuron_u, stim_schedule, method=:spikes; sampling_rate=200.0, start=0.0, stop=last(sol.t), offset=0.1, interpol_fn=AkimaInterpolation, time_window=0.1)
     interpolate_u(u) = interpol_fn(u, sol.t)
     trials = get_trials_from_schedule(stim_schedule)
+    trials_starts = [trial[1] for trial in trials]
+    @show size(trials_starts)
     groups = unique(stim_schedule[3, :]) .|> Int
-    groups_stim_idxs = [findall(row -> row == group, stim_schedule[3, :]) for group in groups]
+    groups_stim_idxs = [findall(row -> row[3] == group && row[1] in trial_starts, stim_schedule) for group in groups]
+    @show size(groups_stim_idxs[1])
     if method == :spikes
         s_bool = sol[neuron_u] |> Utils.get_spikes_from_r .|> Bool
         spikes_neuron = Utils.get_spike_timings(s_bool, sol)

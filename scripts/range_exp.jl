@@ -13,7 +13,7 @@ using DifferentialEquations, ProgressMeter
 
 # Add some workers and initialize with all `@always_everywhere` code:
 old_nprocs = nprocs()
-const N = 10
+const N = 6
 const max_proc = old_nprocs + N
 # _, n = runworkers(OnLocalhost(; n=N))
 cluster = ppt_cluster_manager()
@@ -25,6 +25,12 @@ addprocs(N; exeflags="-L src/SNN.jl")
 
 push!.(Ref(pool), workers())
 import ThreadPinning
+
+# force pseudorandom reviewing protocols OK
+# ressortir les plots avec negatifs OK
+# checker si kern and chao mentionnent brette OK et oui
+# prendre les standards précédents au deviant OK normalement, rechecker pour toutes les fonctions mais CSI ok
+# taille csi ? -> pas encore dynamic bin
 
 display(pool)
 display(worker_resources())
@@ -38,11 +44,25 @@ UID_g = randstring(6)
 # gpu = SNN.Device.to_device_fn(; backend="amd")
 gpu = x -> x
 # gpu = ROCArray
+tspan = (0, 100)
+stim_params = SNN.Params.get_stim_params_skeleton()
+# stim_params.n_trials = 20
+stim_params.amplitude = 1.6e-9
+stim_params.duration = 50.0e-3
+stim_params.deviant_idx = 2
+stim_params.standard_idx = 1
+stim_params.p_deviant = 0.15
+stim_params.start_offset = 2.5
+stim_params.isi = 300e-3
+stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_random=true)
 
 @always_everywhere begin #let SNN = SNN
     using ParallelProcessingTools, Distributed
     using DifferentialEquations, ProgressMeter
     using Statistics
+
+    tspan = $tspan
+    stim_schedule = $stim_schedule
 
 
     function monitor_and_kill(memory_limit)
@@ -59,42 +79,31 @@ gpu = x -> x
         end
     end
 
-    memlimit = 8 * 1000^2
+    memlimit = 6 * 1000^2
     # Optional: Set a custom memory limit for worker processes:
     Distributed.myid() != 1 && memlimit
-    tspan = (0, 100)
 
     # e_neurons_n = 5
 
     # a & b
     # param_a_range = 1.0e-10:1.0e-10:6.0e-9
-    # param_b_range = 2.0e-12:1e-12:9.0e-11
+    param_b_range = 2.0e-12:4e-12:9.0e-11
 
-    param_a_range = 1.0e-10:0.5e-10:6.0e-10
-    param_b_range = 50:50:1200
+    # param_a_range = 1.0e-9:0.5e-9:18.0e-9
+    # param_b_range = 50:50:1200
 
     # param_to_change_a = :a
     # param_to_change_b = :b
-    param_to_change_b = :TauW
+    param_to_change_a = :sigma
 
-    # @everywhere const param_a_range = 0.01:0.05:2.0
+    param_a_range = 0.01:0.05:2.0
     # param_b_range = 0.1:0.1:3.0
     # param_to_change_a = :a
-    param_to_change_a = :Cm
+    param_to_change_b = :b
     # param_to_change_b = :sigma
 
     # make schedule
     UID = $UID_g
-    stim_params = SNN.Params.get_stim_params_skeleton()
-    # stim_params.n_trials = 20
-    stim_params.amplitude = 1.6e-9
-    stim_params.duration = 50.0e-3
-    stim_params.deviant_idx = 2
-    stim_params.standard_idx = 1
-    stim_params.p_deviant = 0.15
-    stim_params.start_offset = 2.5
-    stim_params.isi = 300e-3
-    stim_schedule = SNN.Params.generate_schedule(stim_params, tspan)
 
     @time params = SNN.Neuron.get_adex_neuron_params_skeleton(Float64)
     params.inc_gsyn = 8e-9
@@ -104,7 +113,6 @@ gpu = x -> x
     params.Cm = 4.5e-10
 
     params.Ibase = 2.4e-10
-    # params.Ibase = 0
     params.sigma = 1.0
 
     con_mapping_nested = [

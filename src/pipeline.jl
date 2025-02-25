@@ -146,8 +146,10 @@ function run_exp(path_prefix::String, name::String;
             readouts = [neuron for neuron in e_neurons if neuron.name ∉ input_neurons_name]
             # I have one for now so take first
 
+            @show readouts
             if !isempty(readouts)
                 readout = first(readouts) |> x -> Utils.fetch_tree([String(x.name), "R"], tree)
+                @show readout
                 mr = Utils.hcat_sol_matrix(readout, sol)
                 spikes_readout = Utils.get_spike_timings(mr, sol) |> first # take first as I have one readout
                 trials = Plots.get_trials_from_schedule(stim_schedule)

@@ -252,7 +252,7 @@ function infer_connection_from_map(
     end
     (id_map, map_connect)
 end
-function init_connection_map(e_neurons::Vector{T}, i_neurons::Vector{T}, connection_rules::Vector{ConnectionRule})::Tuple{Vector{Any},Array{Union{Nothing,SynapseType}}} where {T<:AbstractODESystem}
+function init_connection_map(e_neurons::Vector{T}, i_neurons::Vector{T}, connection_rules::Vector{ConnectionRule})::Tuple{Vector{Any},Array{Any}} where {T<:AbstractODESystem}
     neurons = vcat(e_neurons, i_neurons)
     n_neurons = length(e_neurons) + length(i_neurons)
     id_map = [(i, neurons[i]) for i in 1:n_neurons]

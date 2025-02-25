@@ -3,8 +3,9 @@ using DrWatson, Test
 
 # Here you include files using `srcdir`
 # include(srcdir("file.jl"))
-# include("../src/SNN.jl")
-using SNN
+include("../src/SNN.jl")
+# using SNN
+using Random
 using ModelingToolkit, LinearSolve, DifferentialEquations
 
 # Run test suite
@@ -12,44 +13,64 @@ println("Starting tests")
 ti = time()
 
 @testset "SNN.jl" begin
-    tspan = (0, 1)
-    i_neurons_n = 2
-    e_neurons_n = 2
+    Random.seed!(1234)
+    tspan = (0, 10)
 
     @time params = SNN.Neuron.get_adex_neuron_params_skeleton(Float64)
+    params.Ibase = 2.4e-10
+    params.sigma = 1.0
+
+    params.inc_gsyn = 8e-9
+    params.a = 1.5e-9          # Subthreshold adaptation (A)
+    params.b = 4.4e-12          # Spiking adaptation (A)
+    params.TauW = 600.0e-3      # Adaptation time constant (s)
+    params.Cm = 4.5e-10
 
     @time stim_params = SNN.Params.get_stim_params_skeleton()
-    @time schedule = SNN.Params.generate_schedule(stim_params)
+    stim_params.p_deviant = 0.3
+    stim_params.amplitude = 1.6e-9
+    stim_params.duration = 50.0e-3
+    stim_params.deviant_idx = 2
+    stim_params.standard_idx = 1
+    stim_params.p_deviant = 0.15
+    stim_params.start_offset = 2.5
+    stim_params.isi = 300e-3
 
-    @time i_neurons = [SNN.Neuron.make_neuron(params, SNN.Neuron.Soma, tspan, Symbol("i_neuron_$(i)"), schedule) for i in 1:i_neurons_n]
-    @time e_neurons = [SNN.Neuron.make_neuron(params, SNN.Neuron.Soma, tspan, Symbol("e_neuron_$(i)"), schedule) for i in 1:e_neurons_n]
+    @time stim_schedule = SNN.Params.generate_schedule(stim_params, tspan)
 
-    ee_rule = SNN.Neuron.ConnectionRule(SNN.Neuron.excitator, SNN.Neuron.excitator, SNN.Neuron.AMPA(), 0.05)
-    ei_rule = SNN.Neuron.ConnectionRule(SNN.Neuron.excitator, SNN.Neuron.inhibitor, SNN.Neuron.AMPA(), 0.05)
-    ie_rule = SNN.Neuron.ConnectionRule(SNN.Neuron.inhibitor, SNN.Neuron.excitator, SNN.Neuron.GABAa(), 0.05)
-    ii_rule = SNN.Neuron.ConnectionRule(SNN.Neuron.inhibitor, SNN.Neuron.inhibitor, SNN.Neuron.AMPA(), 0.05)
+    # @time i_neurons = [SNN.Neuron.make_neuron(params, SNN.Neuron.Soma, tspan, Symbol("i_neuron_$(i)"), schedule) for i in 1:i_neurons_n]
+    # @time e_neurons = [SNN.Neuron.make_neuron(params, SNN.Neuron.Soma, tspan, Symbol("e_neuron_$(i)"), schedule) for i in 1:e_neurons_n]
 
-    (id_map, map_connect) = SNN.Neuron.init_connection_map(e_neurons, i_neurons, vcat(ee_rule, ei_rule, ie_rule))
-    @show id_map
-    @show map_connect
-    connections = SNN.Neuron.instantiate_connections(id_map, map_connect, vcat(e_neurons, i_neurons))
-    @show connections
+    # ee_rule = SNN.Neuron.ConnectionRule(SNN.Neuron.excitator, SNN.Neuron.excitator, SNN.Neuron.AMPA(), 0.05)
+    # ei_rule = SNN.Neuron.ConnectionRule(SNN.Neuron.excitator, SNN.Neuron.inhibitor, SNN.Neuron.AMPA(), 0.05)
+    # ie_rule = SNN.Neuron.ConnectionRule(SNN.Neuron.inhibitor, SNN.Neuron.excitator, SNN.Neuron.GABAa(), 0.05)
+    # ii_rule = SNN.Neuron.ConnectionRule(SNN.Neuron.inhibitor, SNN.Neuron.inhibitor, SNN.Neuron.AMPA(), 0.05)
 
-    @time network = SNN.Neuron.make_network(vcat(e_neurons, i_neurons), connections)
+    con_mapping_nested = [
+        (SNN.Params.@connect_neurons [1, 2] SNN.Neuron.AMPA() 3),
+    ]
+    con_mapping = reduce(vcat, con_mapping_nested)
 
-    @time simplified_model = SNN.structural_simplify(network; split=false)
+    pre_neurons = [row[1] for row in con_mapping]
+    post_neurons = [row[2] for row in con_mapping]
+    e_neurons_n = size(unique([pre_neurons; post_neurons]), 1)
 
-    @testset "Params" begin
+    solver = DRI1()
+    tols = (1e-3, 1e-3)
 
-        rules = SNN.Params.update_neurons_rules_from_sequence(e_neurons, stim_params, params)
+    (sol, simplified_model, prob, csi, neurons) = SNN.Pipeline.run_exp(
+        "tmp/", "tmp";
+        e_neurons_n=e_neurons_n,
+        params=params,
+        stim_params=stim_params,
+        stim_schedule=stim_schedule,
+        tspan=tspan,
+        con_mapping=con_mapping,
+        solver=solver,
+        tols=tols,
+        fetch_csi=true,
+    )
 
-        uparams = SNN.Neuron.get_adex_neuron_uparams_skeleton(Float64)
-
-        overriden_params = SNN.Params.override_params(params, rules)
-        iparams, iuparams = SNN.Neuron.map_params(simplified_model, overriden_params, uparams; match_nums=false)
-        prob = ODEProblem{true}(simplified_model, iuparams, tspan, iparams)
-        sol = solve(prob, KenCarp47(linsolve=KrylovJL_GMRES()); abstol=1e-4, reltol=1e-4, dtmax=1e-3)
-    end
 end
 
 ti = time() - ti
