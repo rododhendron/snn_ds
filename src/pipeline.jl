@@ -146,16 +146,17 @@ function run_exp(path_prefix::String, name::String;
             readouts = [neuron for neuron in e_neurons if neuron.name ∉ input_neurons_name]
             # I have one for now so take first
 
-            @show readouts
             if !isempty(readouts)
                 readout = first(readouts) |> x -> Utils.fetch_tree([String(x.name), "R"], tree)
-                @show readout
                 mr = Utils.hcat_sol_matrix(readout, sol)
                 spikes_readout = Utils.get_spike_timings(mr, sol) |> first # take first as I have one readout
                 trials = Plots.get_trials_from_schedule(stim_schedule)
                 trials_response = [count(x -> trial_t[1] < x < trial_t[2], spikes_readout) for trial_t in trials]
                 groups = unique(stim_schedule[3, :]) .|> Int
-                groups_stim_idxs = [findall(row -> row == group, stim_schedule[3, :]) for group in groups]
+                # @show getindex.(trials, 1)
+                filtered_stim_schedule = [sched for sched in eachcol(stim_schedule) if sched[1] in getindex.(trials, 1)]
+                # @show filtered_stim_schedule
+                groups_stim_idxs = [findall(row -> row == group, filtered_stim_schedule[3, :]) for group in groups]
                 groups_spikes = [sum(trials_response[gsi]) / length(trials_response[gsi]) for gsi in groups_stim_idxs]
                 # @show groups_spikes
 
@@ -169,13 +170,21 @@ function run_exp(path_prefix::String, name::String;
                 results["deviant_proportion"] = dev_count / size(deviants, 1)
                 results["standard_proportion"] = standard_count / size(standards, 1)
                 tpnp = dev_count + size(standards, 1) - standard_count
-                accuracy = tpnp / size(stim_schedule, 2)
+                accuracy = tpnp / size(filtered_stim_schedule, 2)
                 f1_score = 2 * dev_count / (2 * dev_count + standard_count + size(deviants, 1) - dev_count)
                 results["f1_score"] = f1_score
                 results["accuracy"] = accuracy
 
-                (agg_rate, ot) = Plots.compute_grand_average(sol, first(readout), stim_schedule, :spikes; interpol_fn=LinearInterpolation, time_window=0.01, sampling_rate=20000)
-                results["csi_returned"] = Plots.csi(agg_rate, ot, 0.0, 0.1)
+                (agg_rate_1, ot) = Plots.compute_grand_average(sol, first(readout), stim_schedule, :spikes; interpol_fn=LinearInterpolation, time_window=0.01, sampling_rate=20000)
+                (agg_rate_2, ot) = Plots.compute_grand_average(sol, first(readout), stim_schedule, :spikes; interpol_fn=LinearInterpolation, time_window=0.1, sampling_rate=20000)
+                # results["csi_returned_max"] = Plots.csi(agg_rate, ot, 0.0, 0.3; is_adaptative=true)
+                results["csi_returned_50"] = Plots.csi(agg_rate_1, ot, 0.0, 0.05)
+                results["csi_returned_100"] = Plots.csi(agg_rate_1, ot, 0.0, 0.1)
+                results["csi_returned_300"] = Plots.csi(agg_rate_1, ot, 0.0, 0.3)
+
+                results["csi_returned_50_01"] = Plots.csi(agg_rate_2, ot, 0.0, 0.05)
+                results["csi_returned_100_01"] = Plots.csi(agg_rate_2, ot, 0.0, 0.1)
+                results["csi_returned_300_01"] = Plots.csi(agg_rate_2, ot, 0.0, 0.3)
                 # @show results["csi_returned"]
             end
         end
@@ -183,14 +192,19 @@ function run_exp(path_prefix::String, name::String;
         # @show results
 
         Utils.write_params(results; name=name_interpol("result_metrics.yaml"))
-    catch
-        results["csi_returned"] = 0.0
+    catch e
+        println("error")
+        results["csi_returned_50"] = nothing
+        results["csi_returned_100"] = nothing
+        results["csi_returned_300"] = nothing
+        # results["csi_returned_max"] = nothing
+        rethrow()
     end
 
     if nout
-        results["csi_returned"]
+        results
     else
-        (sol, simplified_model, prob, results["csi_returned"], (e_neurons, i_neurons))
+        (sol, simplified_model, prob, results, (e_neurons, i_neurons))
     end
 end
 

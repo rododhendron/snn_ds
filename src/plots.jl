@@ -4,7 +4,7 @@ using CairoMakie, ComponentArrays
 using CairoMakie: Axis
 using Makie.GeometryBasics
 using Transducers
-using DataInterpolations
+using DataInterpolations, StatsBase
 # using Colors
 
 using ..Utils
@@ -251,14 +251,23 @@ function plot_heat_map_connection(heatmap_connect)
     heatfig
 end
 
+function fetch_stims_idx(stim_schedule, group, trial_starts)
+    out_arr = []
+    for row_i in axes(stim_schedule, 2)
+        (t_start, duration, stim_group) = stim_schedule[:, row_i]
+        if stim_group == group && t_start in trial_starts
+            push!(out_arr, findfirst(x -> x == t_start, trial_starts))
+        end
+    end
+    out_arr
+end
+
 function compute_grand_average(sol, neuron_u, stim_schedule, method=:spikes; sampling_rate=200.0, start=0.0, stop=last(sol.t), offset=0.1, interpol_fn=AkimaInterpolation, time_window=0.1)
     interpolate_u(u) = interpol_fn(u, sol.t)
     trials = get_trials_from_schedule(stim_schedule)
     trials_starts = [trial[1] for trial in trials]
-    @show size(trials_starts)
     groups = unique(stim_schedule[3, :]) .|> Int
-    groups_stim_idxs = [findall(row -> row[3] == group && row[1] in trial_starts, stim_schedule) for group in groups]
-    @show size(groups_stim_idxs[1])
+    groups_stim_idxs = [fetch_stims_idx(stim_schedule, group, trials_starts) for group in groups]
     if method == :spikes
         s_bool = sol[neuron_u] |> Utils.get_spikes_from_r .|> Bool
         spikes_neuron = Utils.get_spike_timings(s_bool, sol)
@@ -272,8 +281,6 @@ function compute_grand_average(sol, neuron_u, stim_schedule, method=:spikes; sam
     trials_times = [collect(trial_t[1]-offset:1/sampling_rate:trial_t[2]) for trial_t in trials] |> Map(x -> x[1:floor(Int, sampling_rate * trial_time_delta)]) |> collect
     # get corresponding values
     sampled_values = trials_times |> Map(trial_times -> interpolation_table.(trial_times)) |> tcollect
-    # @show sampled_values
-    @assert size(trials_times, 1) == size(sampled_values, 1) == size(stim_schedule, 2)
     grouped_trials = groups_stim_idxs |>
                      Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |>
                      collect
@@ -281,11 +288,45 @@ function compute_grand_average(sol, neuron_u, stim_schedule, method=:spikes; sam
     return (grouped_trials, trials_times[1] .- trials[1][1])
 end
 
-function csi(values, offsetted_times, target_start, target_stop; is_voltage=false)
+# function csi(values, offsetted_times, target_start, target_stop; is_voltage=false)
+#     times_to_take = findall(time_t -> target_start <= time_t <= target_stop, offsetted_times)
+#     # compute mean for each values
+#     values_to_compare = values |> Map(x -> x[times_to_take]) |> Map(x -> sum(x) / length(x)) |> collect
+#     values_diff = (values_to_compare[2] - values_to_compare[1]) / (values_to_compare[1] + values_to_compare[2])
+# end
+function csi(values, offsetted_times, target_start, target_stop; is_voltage=false, is_adaptative=false, window_width=0.002)
+    # First get the initial time window
     times_to_take = findall(time_t -> target_start <= time_t <= target_stop, offsetted_times)
-    # compute mean for each values
-    values_to_compare = values |> Map(x -> x[times_to_take]) |> Map(x -> sum(x) / length(x)) |> collect
+
+    if is_adaptative
+        # Get values within initial window for both signals
+        signal1 = values[1][times_to_take]
+        signal2 = values[2][times_to_take]
+
+        # Find maximum value positions
+        max1_idx = argmax(signal1)
+        max2_idx = argmax(signal2)
+
+        # Calculate separate windows for each signal
+        start_idx1 = max(1, max1_idx - window_width)
+        end_idx1 = min(length(times_to_take), max1_idx + window_width)
+
+        start_idx2 = max(1, max2_idx - window_width)
+        end_idx2 = min(length(times_to_take), max2_idx + window_width)
+
+        # Get values using separate windows
+        value1_mean = mean(values[1][times_to_take[start_idx1:end_idx1]])
+        value2_mean = mean(values[2][times_to_take[start_idx2:end_idx2]])
+
+        values_to_compare = [value1_mean, value2_mean]
+    else
+        # Original computation for non-adaptive case
+        values_to_compare = values |> Map(x -> x[times_to_take]) |> Map(x -> sum(x) / length(x)) |> collect
+    end
+
+    # Compute mean for each values using the (potentially updated) time window
     values_diff = (values_to_compare[2] - values_to_compare[1]) / (values_to_compare[1] + values_to_compare[2])
+    # @show values_diff
 end
 
 end

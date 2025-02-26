@@ -13,7 +13,7 @@ using DifferentialEquations, ProgressMeter
 
 # Add some workers and initialize with all `@always_everywhere` code:
 old_nprocs = nprocs()
-const N = 6
+const N = 10
 const max_proc = old_nprocs + N
 # _, n = runworkers(OnLocalhost(; n=N))
 cluster = ppt_cluster_manager()
@@ -62,6 +62,7 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
     using Statistics
 
     tspan = $tspan
+    stim_params = $stim_params
     stim_schedule = $stim_schedule
 
 
@@ -231,9 +232,11 @@ returns = @showprogress pmap(row -> run_model_for_ij!(row), pool, indices; retry
 # returns = @showprogress @onprocs(row -> run_model_for_ij!(row), indices; retry_delays=ones(4))
 @show returns
 
-heatmap_values = (collect(param_a_range), collect(param_b_range), returns)
-@show heatmap_values
-SNN.Plots.plot_heatmap(
-    heatmap_values,
-    title="csi over params search", name="results/$(UID)/base_3_adaptation_scan_$(string(param_to_change_a))_$(string(param_to_change_b)).png", tofile=true, xlabel=String(param_to_change_a), ylabel=String(param_to_change_b)
-)
+for k in keys(returns[1])
+    heatmap_values = (collect(param_a_range), collect(param_b_range), get.(returns, k, nothing))
+    @show heatmap_values
+    SNN.Plots.plot_heatmap(
+        heatmap_values,
+        title="csi over params search", name="results/$(UID)/base_3_adaptation_scan_$(string(param_to_change_a))_$(string(param_to_change_b))_$k.png", tofile=true, xlabel=String(param_to_change_a), ylabel=String(param_to_change_b)
+    )
+end

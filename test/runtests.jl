@@ -58,7 +58,7 @@ ti = time()
     solver = DRI1()
     tols = (1e-3, 1e-3)
 
-    (sol, simplified_model, prob, csi, neurons) = SNN.Pipeline.run_exp(
+    (sol, simplified_model, prob, results, neurons) = SNN.Pipeline.run_exp(
         "tmp/", "tmp";
         e_neurons_n=e_neurons_n,
         params=params,
@@ -70,6 +70,7 @@ ti = time()
         tols=tols,
         fetch_csi=true,
     )
+    @show results
 
 end
 
