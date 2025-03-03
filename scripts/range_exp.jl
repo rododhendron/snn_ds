@@ -87,8 +87,8 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
     # e_neurons_n = 5
 
     # a & b
-    # param_a_range = 1.0e-10:1.0e-10:6.0e-9
-    param_b_range = 2.0e-12:4e-12:9.0e-11
+    param_b_range = 1.0e-10:4.0e-10:6.0e-9
+    # param_b_range = 2.0e-12:4e-12:9.0e-11
 
     # param_a_range = 1.0e-9:0.5e-9:18.0e-9
     # param_b_range = 50:50:1200
@@ -97,10 +97,10 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
     # param_to_change_b = :b
     param_to_change_a = :sigma
 
-    param_a_range = 0.01:0.05:2.0
+    param_a_range = 0.01:0.05:3.0
     # param_b_range = 0.1:0.1:3.0
     # param_to_change_a = :a
-    param_to_change_b = :b
+    param_to_change_b = :a
     # param_to_change_b = :sigma
 
     # make schedule

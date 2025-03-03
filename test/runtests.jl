@@ -8,6 +8,8 @@ include("../src/SNN.jl")
 using Random
 using ModelingToolkit, LinearSolve, DifferentialEquations
 
+using AMDGPU
+
 # Run test suite
 println("Starting tests")
 ti = time()
@@ -69,6 +71,23 @@ ti = time()
         solver=solver,
         tols=tols,
         fetch_csi=true,
+    )
+    @show results
+
+    # test gpu
+
+    (sol, simplified_model, prob, results, neurons) = SNN.Pipeline.run_exp(
+        "tmp/", "tmp";
+        e_neurons_n=e_neurons_n,
+        params=params,
+        stim_params=stim_params,
+        stim_schedule=stim_schedule,
+        tspan=tspan,
+        con_mapping=con_mapping,
+        solver=solver,
+        tols=tols,
+        fetch_csi=true,
+        to_device=x -> ROCArray(x)
     )
     @show results
 
