@@ -80,7 +80,7 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
         end
     end
 
-    memlimit = 6 * 1000^2
+    memlimit = 8 * 1000^2
     # Optional: Set a custom memory limit for worker processes:
     Distributed.myid() != 1 && memlimit
 
@@ -95,7 +95,7 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
 
     # param_to_change_a = :a
     # param_to_change_b = :b
-    param_a_range = 0.01:0.5:2.0
+    param_a_range = 0.01:0.02:2.0
     param_to_change_a = :sigma
 
     # param_a_range = 0.01:0.05:3.0
@@ -104,7 +104,7 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
     # param_to_change_b = :a
     # param_b_range = 0.1:0.1:3.0
     # param_to_change_a = :a
-    param_b_range = 1.0e-12:0.5e-11:10.0e-11
+    param_b_range = 1.0e-12:0.1e-11:10.0e-11
     param_to_change_b = :b
     # param_to_change_b = :sigma
 
@@ -118,7 +118,7 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
     params.TauW = 600.0e-3      # Adaptation time constant (s)
     params.Cm = 4.5e-10
 
-    params.Ibase = 2.4e-10
+    params.Ibase = 1.0e-10
     params.sigma = 1.0
 
     con_mapping_nested = [
@@ -132,9 +132,11 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
     # e_neurons_n = 1
     #
     l = ReentrantLock()
-    tols = (1e-3, 1e-3)
+    # tols = (1e-2, 1e-2)
+    tols = (5e-2, 5e-2)
 
-    solver = DRI1()
+    # solver = DRI1()
+    solver = EulerHeun()
 
     run_model_for_ij!(indices) = run_model!(
         params,
@@ -207,7 +209,7 @@ ensure_procinit()
     solver=solver,
     tols=tols,
     fetch_csi=true,
-    to_device=gpu,
+    # to_device=gpu,
     # l=l
 )
 pb_len = length(param_b_range)

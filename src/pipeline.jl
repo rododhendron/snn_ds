@@ -3,6 +3,7 @@ module Pipeline
 using SciMLBase: AbstractODEProblem
 using Symbolics, ModelingToolkit, DifferentialEquations, ComponentArrays, LinearAlgebra, LinearSolve, SciMLBase, DataInterpolations
 using Random
+using DataInterpolations
 
 using ..Params
 using ..Neuron
@@ -22,8 +23,8 @@ function run_exp(path_prefix::String, name::String;
     tspan::Tuple{Int,Int},
     con_mapping::Union{Nothing,Vector{Any}}=nothing,
     prob_con::Tuple{Float64,Float64,Float64,Float64}=(0.05, 0.05, 0.05, 0.05),
-    remake_prob::Union{Nothing,AbstractODEProblem}=nothing,
-    model::Union{Nothing,ModelingToolkit.AbstractODESystem}=nothing,
+    remake_prob::Any=nothing,
+    model::Any=nothing,
     save_plots::Bool=false,
     fetch_csi::Bool=false,
     to_device::Function=x -> x,
@@ -88,6 +89,7 @@ function run_exp(path_prefix::String, name::String;
         cb = ModelingToolkit.merge_cb(contin_cb, nothing) # 2nd arg is placeholder for discrete callback
 
         prob = SDEProblem{true,SciMLBase.FullSpecialize}(simplified_model, iuparams, tspan, iparams, cb=cb, maxiters=1e7)#, sparse=true)
+    # prob = SymbolicsAMDGPU.SDEProblem(simplified_model, iuparams, tspan, iparams, cb=cb, maxiters=1e7; use_gpu=true)#, sparse=true)
     else
         simplified_model = model
         tree = Utils.make_param_tree(model)
@@ -99,7 +101,8 @@ function run_exp(path_prefix::String, name::String;
     # @time sol = solve(prob, SOSRA(); abstol=1e-3, reltol=1e-3, dtmax=1e-3)
     # @time sol = solve(prob, SKenCarp(); abstol=1e-3, reltol=1e-3, dtmax=1e-3)
     # @time sol = solve(prob, ImplicitRKMil(), abstol=1e-2, reltol=-1e-2, dtmax=1e-3)
-    sol = solve(prob, solver, abstol=tols[1], reltol=tols[2], dt=1e-6)
+    # AMDGPU.allowscalar(true)
+    sol = solve(prob, solver, abstol=tols[1], reltol=tols[2], dt=1e-4)
 
     (start, stop) = tspan
 
@@ -113,12 +116,12 @@ function run_exp(path_prefix::String, name::String;
         Utils.write_params(iparams; name=name_interpol("iparams.yaml"))
         Utils.write_params(iuparams; name=name_interpol("iuparams.yaml"))
         for i in 1:e_neurons_n
-            # @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
-            # @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
-            # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
-            # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.1)
-            # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.05)
-            # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.01)
+            @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
+            @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
+            @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
+            @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.1)
+            @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.05)
+            @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.01)
             (grouped_trials, offsetted_times) = Plots.compute_grand_average(sol, Plots.fetch_tree_neuron_value("e_neuron", i, "v", tree) |> first, stim_schedule, :value; interpol_fn=LinearInterpolation, sampling_rate=2000)
             Plots.plot_neuron_value(offsetted_times, grouped_trials, nothing, nothing, [0.0, 0.05]; start=-0.1, stop=maximum(offsetted_times), title="gdavg voltage neuron $(i)", name=name_interpol("gdavg_e_3_voltage.png"), schedule=stim_schedule, tofile=true, ylabel="voltage (in V)", xlabel="Time (in s)", multi=true, plot_stims=false)
             (agg_rate, ot) = Plots.compute_grand_average(sol, Plots.fetch_tree_neuron_value("e_neuron", i, "R", tree) |> first, stim_schedule, :spikes; interpol_fn=LinearInterpolation, time_window=0.01, sampling_rate=2000)
@@ -198,7 +201,12 @@ function run_exp(path_prefix::String, name::String;
         results["csi_returned_100"] = nothing
         results["csi_returned_300"] = nothing
         # results["csi_returned_max"] = nothing
-        rethrow()
+        if isa(e, LoadError) || isa(e, DataInterpolations.RightExtrapolationError)
+            println("LoadError")
+            return results
+        else
+            rethrow()
+        end
     end
 
     if nout

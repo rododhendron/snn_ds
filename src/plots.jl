@@ -82,6 +82,9 @@ end
 
 
 function plot_neuron_value(time, value, p, input_current, offset; start=0, scale=identity, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false, schedule=[], multi=false, plot_stims=true)
+    if isempty(value)
+        return nothing
+    end
     call_ax2 = isnothing(input_current) ? false : true
     f, ax, ax2, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, schedule=schedule, plot_stims=plot_stims, yticks=Makie.automatic, yscale=scale, call_ax2=call_ax2)
     if multi
@@ -263,29 +266,34 @@ function fetch_stims_idx(stim_schedule, group, trial_starts)
 end
 
 function compute_grand_average(sol, neuron_u, stim_schedule, method=:spikes; sampling_rate=200.0, start=0.0, stop=last(sol.t), offset=0.1, interpol_fn=AkimaInterpolation, time_window=0.1)
-    interpolate_u(u) = interpol_fn(u, sol.t)
-    trials = get_trials_from_schedule(stim_schedule)
-    trials_starts = [trial[1] for trial in trials]
-    groups = unique(stim_schedule[3, :]) .|> Int
-    groups_stim_idxs = [fetch_stims_idx(stim_schedule, group, trials_starts) for group in groups]
-    if method == :spikes
-        s_bool = sol[neuron_u] |> Utils.get_spikes_from_r .|> Bool
-        spikes_neuron = Utils.get_spike_timings(s_bool, sol)
-        spike_rate = compute_moving_average(sol.t, spikes_neuron, time_window)
-        interpolation_table = interpolate_u(spike_rate)
-    elseif method == :value
-        interpolation_table = interpolate_u(sol[neuron_u])
-        # for each trial, get list of resampled times
+    try
+        interpolate_u(u) = interpol_fn(u, Array(sol.t))
+        trials = get_trials_from_schedule(stim_schedule)
+        trials_starts = [trial[1] for trial in trials]
+        groups = unique(stim_schedule[3, :]) .|> Int
+        groups_stim_idxs = [fetch_stims_idx(stim_schedule, group, trials_starts) for group in groups]
+        if method == :spikes
+            s_bool = sol[neuron_u] |> Utils.get_spikes_from_r .|> Bool
+            spikes_neuron = Utils.get_spike_timings(s_bool, sol)
+            spike_rate = compute_moving_average(sol.t, spikes_neuron, time_window)
+            interpolation_table = interpolate_u(spike_rate)
+        elseif method == :value
+            interpolation_table = interpolate_u(sol[neuron_u])
+            # for each trial, get list of resampled times
+        end
+        trial_time_delta = first(trials)[2] - first(trials)[1] + offset
+        trials_times = [collect(trial_t[1]-offset:1/sampling_rate:trial_t[2]) for trial_t in trials] |> Map(x -> x[1:floor(Int, sampling_rate * trial_time_delta)]) |> collect
+        # get corresponding values
+        sampled_values = trials_times |> Map(trial_times -> interpolation_table.(trial_times)) |> tcollect
+        grouped_trials = groups_stim_idxs |>
+                         Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |>
+                         collect
+        # @show grouped_trials
+        return (grouped_trials, trials_times[1] .- trials[1][1])
+    catch e
+        println("catched $e")
+        return ([], [])
     end
-    trial_time_delta = first(trials)[2] - first(trials)[1] + offset
-    trials_times = [collect(trial_t[1]-offset:1/sampling_rate:trial_t[2]) for trial_t in trials] |> Map(x -> x[1:floor(Int, sampling_rate * trial_time_delta)]) |> collect
-    # get corresponding values
-    sampled_values = trials_times |> Map(trial_times -> interpolation_table.(trial_times)) |> tcollect
-    grouped_trials = groups_stim_idxs |>
-                     Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |>
-                     collect
-    # @show grouped_trials
-    return (grouped_trials, trials_times[1] .- trials[1][1])
 end
 
 # function csi(values, offsetted_times, target_start, target_stop; is_voltage=false)
@@ -295,6 +303,9 @@ end
 #     values_diff = (values_to_compare[2] - values_to_compare[1]) / (values_to_compare[1] + values_to_compare[2])
 # end
 function csi(values, offsetted_times, target_start, target_stop; is_voltage=false, is_adaptative=false, window_width=0.002)
+    if isempty(values)
+        return nothing
+    end
     # First get the initial time window
     times_to_take = findall(time_t -> target_start <= time_t <= target_stop, offsetted_times)
 
