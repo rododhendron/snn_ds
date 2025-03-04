@@ -196,12 +196,14 @@ function run_exp(path_prefix::String, name::String;
 
         Utils.write_params(results; name=name_interpol("result_metrics.yaml"))
     catch e
-        println("error")
-        results["csi_returned_50"] = nothing
-        results["csi_returned_100"] = nothing
-        results["csi_returned_300"] = nothing
+        println("catched $e")
+        results["csi_returned_50"] = NaN
+        results["csi_returned_100"] = NaN
+        results["csi_returned_300"] = NaN
         # results["csi_returned_max"] = nothing
-        if isa(e, LoadError) || isa(e, DataInterpolations.RightExtrapolationError)
+        if isa(e, LoadError) ||
+           isa(e, DataInterpolations.RightExtrapolationError) ||
+           isa(e, ArgumentError)
             println("LoadError")
             return results
         else

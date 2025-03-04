@@ -304,7 +304,7 @@ end
 # end
 function csi(values, offsetted_times, target_start, target_stop; is_voltage=false, is_adaptative=false, window_width=0.002)
     if isempty(values)
-        return nothing
+        return NaN
     end
     # First get the initial time window
     times_to_take = findall(time_t -> target_start <= time_t <= target_stop, offsetted_times)

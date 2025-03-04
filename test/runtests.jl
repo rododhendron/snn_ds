@@ -16,11 +16,12 @@ ti = time()
 
 @testset "SNN.jl" begin
     Random.seed!(1234)
-    tspan = (0, 10)
+    tspan = (0, 100)
 
     @time params = SNN.Neuron.get_adex_neuron_params_skeleton(Float64)
-    params.Ibase = 2.4e-10
-    params.sigma = 1.0
+    # params.Ibase = 2.4e-10
+    params.Ibase = 1.0e-10
+    params.sigma = 0.5
 
     params.inc_gsyn = 8e-9
     params.a = 1.5e-9          # Subthreshold adaptation (A)
@@ -57,8 +58,9 @@ ti = time()
     post_neurons = [row[2] for row in con_mapping]
     e_neurons_n = size(unique([pre_neurons; post_neurons]), 1)
 
-    solver = DRI1()
-    tols = (1e-3, 1e-3)
+    # solver = ISSEM(theta=1 / 2)
+    solver = EulerHeun()
+    tols = (5e-2, 5e-2)
 
     (sol, simplified_model, prob, results, neurons) = SNN.Pipeline.run_exp(
         "tmp/", "tmp";
@@ -87,7 +89,10 @@ ti = time()
         solver=solver,
         tols=tols,
         fetch_csi=true,
-        to_device=x -> ROCArray(x)
+        # to_device=x -> ROCArray(x),
+        remake_prob=prob,
+        model=simplified_model,
+        neurons=neurons
     )
     @show results
 
