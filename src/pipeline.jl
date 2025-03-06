@@ -4,6 +4,7 @@ using SciMLBase: AbstractODEProblem
 using Symbolics, ModelingToolkit, DifferentialEquations, ComponentArrays, LinearAlgebra, LinearSolve, SciMLBase, DataInterpolations
 using Random
 using DiffEqNoiseProcess
+using DataInterpolations
 
 using ..Params
 using ..Neuron
@@ -60,8 +61,8 @@ function run_exp(path_prefix::String, name::String;
     tspan::Union{Tuple{Int,Int}, Tuple{Int,Float64}},
     con_mapping=nothing,
     prob_con::Tuple{Float64,Float64,Float64,Float64}=(0.05, 0.05, 0.05, 0.05),
-    remake_prob::Union{Nothing,AbstractODEProblem}=nothing,
-    model::Union{Nothing,ModelingToolkit.AbstractODESystem}=nothing,
+    remake_prob::Any=nothing,
+    model::Any=nothing,
     save_plots::Bool=false,
     fetch_csi::Bool=false,
     to_device::Function=x -> x,
@@ -211,12 +212,12 @@ function run_exp(path_prefix::String, name::String;
         Utils.write_params(iparams; name=name_interpol("iparams.yaml"))
         Utils.write_params(iuparams; name=name_interpol("iuparams.yaml"))
         for i in 1:e_neurons_n
-            # @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
-            # @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
-            # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
-            # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.1)
-            # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.05)
-            # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.01)
+            @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
+            @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
+            @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
+            @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.1)
+            @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.05)
+            @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.01)
             (grouped_trials, offsetted_times) = Plots.compute_grand_average(sol, Plots.fetch_tree_neuron_value("e_neuron", i, "v", tree) |> first, stim_schedule, :value; interpol_fn=LinearInterpolation, sampling_rate=2000)
             Plots.plot_neuron_value(offsetted_times, grouped_trials, nothing, nothing, [0.0, 0.05]; start=-0.1, stop=maximum(offsetted_times), title="gdavg voltage neuron $(i)", name=name_interpol("gdavg_e_3_voltage.png"), schedule=stim_schedule, tofile=true, ylabel="voltage (in V)", xlabel="Time (in s)", multi=true, plot_stims=false)
             (agg_rate, ot) = Plots.compute_grand_average(sol, Plots.fetch_tree_neuron_value("e_neuron", i, "R", tree) |> first, stim_schedule, :spikes; interpol_fn=LinearInterpolation, time_window=0.01, sampling_rate=2000)

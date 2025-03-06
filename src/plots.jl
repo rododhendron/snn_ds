@@ -82,6 +82,9 @@ end
 
 
 function plot_neuron_value(time, value, p, input_current, offset; start=0, scale=identity, stop=0, xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false, schedule=[], multi=false, plot_stims=true)
+    if isempty(value)
+        return nothing
+    end
     call_ax2 = isnothing(input_current) ? false : true
     f, ax, ax2, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, schedule=schedule, plot_stims=plot_stims, yticks=Makie.automatic, yscale=scale, call_ax2=call_ax2)
     if multi
@@ -301,7 +304,6 @@ end
 """
     csi(values, offsetted_times, target_start, target_stop;
         is_voltage=false, is_adaptative=false, window_width=0.002)
-
 Calculate the Common-Contrast Stimulus-Specific Adaptation Index (CSI).
 
 In the context of Stimulus-Specific Adaptation (SSA), CSI is defined as:
