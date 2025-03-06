@@ -146,9 +146,9 @@ begin
 	    tspan=tspan,
 	    con_mapping=con_mapping,
 	    stim_schedule=stim_schedule,
-	    solver=SKenCarp(),
+	    solver=DRI1(),
 	    # solver=DRI1(),
-		tols=(1e-2, 1e-2)
+		tols=(1e-3, 1e-3)
 	)
 	nothing
 end
