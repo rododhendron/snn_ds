@@ -2,7 +2,7 @@
 
 julia_version = "1.11.3"
 manifest_format = "2.0"
-project_hash = "1deded3fd6cc90e514bf032f5282d7326f77ea33"
+project_hash = "b903c16a370eb28c1fac0b465993aa164fc28124"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "e1ce448a0d7f88168ffe2eeac4549c32d45a42d1"
@@ -1410,6 +1410,12 @@ version = "1.4.2"
     ArrowTypes = "31f734f8-188a-4ce0-8406-c8a06bd891cd"
     Parsers = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
 
+[[deps.InlineTest]]
+deps = ["Test"]
+git-tree-sha1 = "daf0743879904f0ad645ca6594e1479685f158a2"
+uuid = "bd334432-b1e7-49c7-a2dc-dd9149e4ebd6"
+version = "0.2.0"
+
 [[deps.IntegerMathUtils]]
 git-tree-sha1 = "b8ffb903da9f7b8cf695a8bead8e01814aa24b30"
 uuid = "18e54dd8-cb9d-406c-a71d-865a43cbb235"
@@ -2668,6 +2674,12 @@ weakdeps = ["FixedPointNumbers"]
 
     [deps.Ratios.extensions]
     RatiosFixedPointNumbersExt = "FixedPointNumbers"
+
+[[deps.ReTest]]
+deps = ["Distributed", "InlineTest", "PrecompileTools", "Printf", "Random", "Sockets", "Test"]
+git-tree-sha1 = "9a5136d157d1d6a2a56ff77bef1dc324e1313193"
+uuid = "e0db7c4e-2690-44b9-bad6-7687da720f89"
+version = "0.3.4"
 
 [[deps.RecipesBase]]
 deps = ["PrecompileTools"]

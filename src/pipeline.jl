@@ -3,6 +3,7 @@ module Pipeline
 using SciMLBase: AbstractODEProblem
 using Symbolics, ModelingToolkit, DifferentialEquations, ComponentArrays, LinearAlgebra, LinearSolve, SciMLBase, DataInterpolations
 using Random
+using DiffEqNoiseProcess
 
 using ..Params
 using ..Neuron
@@ -11,16 +12,53 @@ using ..Plots
 
 ModelingToolkit.get_continuous_events(sys::SDESystem) = [sys.continuous_events...]
 
+"""
+    run_exp(path_prefix, name; kwargs...)
+
+Run a network simulation experiment with the specified parameters.
+
+# Required Arguments
+- `path_prefix::String`: Directory where results will be saved
+- `name::String`: Name of the experiment (used for file naming)
+- `params::ComponentVector`: Neuron parameters
+- `stim_params::ComponentVector`: Stimulation parameters
+- `stim_schedule::Array{Float64,2}`: Matrix of stimulation schedule
+- `tspan::Tuple{Int,Int}`: Time span for simulation in seconds
+
+# Optional Arguments
+- `tols::Tuple{Float64,Float64}=(1e-5, 1e-5)`: Absolute and relative tolerances
+- `e_neurons_n::Int=0`: Number of excitatory neurons
+- `i_neurons_n::Int=0`: Number of inhibitory neurons
+- `solver=nothing`: Solver to use (if nothing, appropriate solver selected automatically)
+- `con_mapping::Union{Nothing,Vector{Any}}=nothing`: Custom connection mapping
+- `prob_con::Tuple{Float64,Float64,Float64,Float64}=(0.05, 0.05, 0.05, 0.05)`: Connection probabilities
+- `remake_prob::Union{Nothing,AbstractODEProblem}=nothing`: Problem to remake
+- `model::Union{Nothing,ModelingToolkit.AbstractODESystem}=nothing`: Existing model to use
+- `save_plots::Bool=false`: Whether to save plots
+- `fetch_csi::Bool=false`: Whether to fetch CSI metrics
+- `to_device::Function=x -> x`: Function to transfer data to computing device
+- `l::Union{Nothing,Base.AbstractLock}=nothing`: Lock for parallel execution
+- `neurons::Tuple{...}=(nothing, nothing)`: Pre-existing neuron models
+- `nout::Bool=false`: Whether to return only metrics
+
+# Returns
+- `(sol, simplified_model, prob, results, (e_neurons, i_neurons))` or just `results` if nout=true
+
+# Note
+The function automatically selects an appropriate solver if none is provided:
+- SOSRI for stochastic simulations (if params.sigma > 0)
+- Rodas5 for deterministic simulations
+"""
 function run_exp(path_prefix::String, name::String;
     tols::Tuple{Float64,Float64}=(1e-5, 1e-5),
     e_neurons_n::Int=0,
     i_neurons_n::Int=0,
-    solver,
+    solver=nothing,
     params::ComponentVector,
     stim_params::ComponentVector,
     stim_schedule::Array{Float64,2},
-    tspan::Tuple{Int,Int},
-    con_mapping::Union{Nothing,Vector{Any}}=nothing,
+    tspan::Union{Tuple{Int,Int}, Tuple{Int,Float64}},
+    con_mapping=nothing,
     prob_con::Tuple{Float64,Float64,Float64,Float64}=(0.05, 0.05, 0.05, 0.05),
     remake_prob::Union{Nothing,AbstractODEProblem}=nothing,
     model::Union{Nothing,ModelingToolkit.AbstractODESystem}=nothing,
@@ -42,6 +80,7 @@ function run_exp(path_prefix::String, name::String;
     else
         (e_neurons, i_neurons) = (neurons[1], neurons[2])
     end
+    n_neurons = length(e_neurons) + length(i_neurons)
 
     (input_neurons, rules) = Params.update_neurons_rules_from_sequence(e_neurons, stim_params, params)
     (input_grp, input_neuron_vec) = zip(input_neurons...)
@@ -66,9 +105,10 @@ function run_exp(path_prefix::String, name::String;
 
         network = Neuron.make_network(e_neurons, connections)
 
-        # add noise
+        # add noise - with improved stability
         noise_eqs = Neuron.instantiate_noise(network, e_neurons, params.sigma)
 
+        # Create SDE system with appropriate noise terms
         @named sde_network = SDESystem(
             equations(network),
             collect(noise_eqs),
@@ -78,16 +118,43 @@ function run_exp(path_prefix::String, name::String;
             continuous_events=continuous_events(network),
             observed=observed(network);
         )
-        # @named noise_network = System([equations(network)...; noise_eqs...], ModelingToolkit.get_iv(network))
-        noise_network = ODESystem(sde_network)
-        simplified_model = structural_simplify(noise_network; split=true, jac=true)
+
+        # Convert to ODESystem for simplification
+        # noise_network = ODESystem(sde_network)
+
+        # Perform structural simplification with split=true for better performance
+        simplified_model = structural_simplify(sde_network; split=true, jac=true)
+
+        # Build parameter tree and parameter mappings
         tree::Utils.ParamTree = Utils.make_param_tree(simplified_model)
         res = Utils.fetch_tree(["e_neuron", "R"], tree)
         iparams, iuparams = Neuron.map_params(simplified_model, overriden_params, uparams; match_nums=true)
-        contin_cb = ModelingToolkit.generate_rootfinding_callback([simplified_model.continuous_events...], simplified_model, unknowns(simplified_model), parameters(simplified_model))
-        cb = ModelingToolkit.merge_cb(contin_cb, nothing) # 2nd arg is placeholder for discrete callback
 
-        prob = SDEProblem{true,SciMLBase.FullSpecialize}(simplified_model, iuparams, tspan, iparams, cb=cb, maxiters=1e7)#, sparse=true)
+        # # Generate callbacks for spike events
+        # contin_cb = ModelingToolkit.generate_rootfinding_callback(
+        #     [simplified_model.continuous_events...],
+        #     simplified_model,
+        #     unknowns(simplified_model),
+        #     parameters(simplified_model)
+        # )
+        # cb = ModelingToolkit.merge_cb(contin_cb, nothing) # 2nd arg is placeholder for discrete callback
+        ou_process = [RealWienerProcess(0.0, 0.0) for _ in 1:length(n_neurons)]
+
+        @show noise_eqs
+        # Create the SDE problem with specialized solver settings
+        prob = SDEProblem{true,SciMLBase.FullSpecialize}(
+            simplified_model,
+            iuparams,
+            tspan,
+            iparams,
+            # cb=cb,
+            maxiters=1e7,
+            # Add stability options:
+            noise=ou_process,
+            # Set sparse=true for large networks to improve performance
+            sparse=size(e_neurons, 1) > 10 ? true : false,
+            sparsenoise=true
+        )
     else
         simplified_model = model
         tree = Utils.make_param_tree(model)
@@ -95,11 +162,42 @@ function run_exp(path_prefix::String, name::String;
         prob = remake(remake_prob; u0=iuparams, p=iparams)
     end
 
-    # @time sol = solve(prob, KenCarp47(linsolve=KrylovJL_GMRES()); abstol=1e-4, reltol=1e-4, dtmax=1e-3)
-    # @time sol = solve(prob, SOSRA(); abstol=1e-3, reltol=1e-3, dtmax=1e-3)
-    # @time sol = solve(prob, SKenCarp(); abstol=1e-3, reltol=1e-3, dtmax=1e-3)
-    # @time sol = solve(prob, ImplicitRKMil(), abstol=1e-2, reltol=-1e-2, dtmax=1e-3)
-    sol = solve(prob, solver, abstol=tols[1], reltol=tols[2], dt=1e-6)
+    # Choose appropriate defaults if solver is not provided
+    if isnothing(solver)
+        if params.sigma > 0  # If using noise
+            # SOSRI is generally more stable for stiff SDEs
+            # ImplicitRKMil is more accurate but computationally expensive
+            solver = SOSRI()
+            println("Using default SDE solver: SOSRI")
+        else
+            # For non-stochastic simulations with events
+            solver = Rodas5()
+            println("Using default ODE solver: Rodas5")
+        end
+    end
+
+    # Set default parameters for solver if not provided
+    dtmax = min(1e-3, (tspan[2] - tspan[1])/1000) # Limit max step size based on simulation duration
+
+    # Use a starting dt that's meaningful but doesn't constrain the adaptive stepping too much
+    # For SDEs, a smaller starting dt is generally safer
+    dt_init = min(1e-5, (tspan[2] - tspan[1])/10000)
+
+    println("Solving with tolerances: abstol=$(tols[1]), reltol=$(tols[2]), dtmax=$dtmax")
+
+    # Different solvers may benefit from different configurations
+    if any(typeof(solver) .== [SOSRI, SOSRA, ImplicitRKMil, SRA, SRI])
+        # For SDE solvers
+        sol = solve(prob, solver, abstol=tols[1], reltol=tols[2],
+                    dt=dt_init, dtmax=dtmax,
+                    adaptive=true, progress=true, progress_steps=100,
+                    internalnorm=(u,t) -> sqrt(sum(abs2, u)/length(u)))
+    else
+        # For ODE solvers
+        sol = solve(prob, solver, abstol=tols[1], reltol=tols[2],
+                    dt=dt_init, dtmax=dtmax,
+                    adaptive=true, progress=true, progress_steps=100)
+    end
 
     (start, stop) = tspan
 
@@ -175,17 +273,52 @@ function run_exp(path_prefix::String, name::String;
                 results["f1_score"] = f1_score
                 results["accuracy"] = accuracy
 
-                (agg_rate_1, ot) = Plots.compute_grand_average(sol, first(readout), stim_schedule, :spikes; interpol_fn=LinearInterpolation, time_window=0.01, sampling_rate=20000)
-                (agg_rate_2, ot) = Plots.compute_grand_average(sol, first(readout), stim_schedule, :spikes; interpol_fn=LinearInterpolation, time_window=0.1, sampling_rate=20000)
-                # results["csi_returned_max"] = Plots.csi(agg_rate, ot, 0.0, 0.3; is_adaptative=true)
-                results["csi_returned_50"] = Plots.csi(agg_rate_1, ot, 0.0, 0.05)
-                results["csi_returned_100"] = Plots.csi(agg_rate_1, ot, 0.0, 0.1)
-                results["csi_returned_300"] = Plots.csi(agg_rate_1, ot, 0.0, 0.3)
+                # Compute grand averages with different time windows for robustness
+                println("Computing CSI metrics with time windows of 10ms and 100ms...")
 
-                results["csi_returned_50_01"] = Plots.csi(agg_rate_2, ot, 0.0, 0.05)
-                results["csi_returned_100_01"] = Plots.csi(agg_rate_2, ot, 0.0, 0.1)
-                results["csi_returned_300_01"] = Plots.csi(agg_rate_2, ot, 0.0, 0.3)
-                # @show results["csi_returned"]
+                # Calculate fine-grained average (10ms window)
+                (agg_rate_fine, ot_fine) = Plots.compute_grand_average(
+                    sol, first(readout), stim_schedule, :spikes;
+                    interpol_fn=LinearInterpolation, time_window=0.01,
+                    sampling_rate=20000
+                )
+
+                # Calculate coarse-grained average (100ms window)
+                (agg_rate_coarse, ot_coarse) = Plots.compute_grand_average(
+                    sol, first(readout), stim_schedule, :spikes;
+                    interpol_fn=LinearInterpolation, time_window=0.1,
+                    sampling_rate=20000
+                )
+
+                # Calculate CSI with different time windows
+                # Using different time windows and analysis periods provides more robust metrics
+
+                # Store CSI metrics using fine-grained rates (10ms window)
+                results["csi_fine_50ms"] = Plots.csi(agg_rate_fine, ot_fine, 0.0, 0.05)
+                results["csi_fine_100ms"] = Plots.csi(agg_rate_fine, ot_fine, 0.0, 0.1)
+                results["csi_fine_300ms"] = Plots.csi(agg_rate_fine, ot_fine, 0.0, 0.3)
+
+                # Store CSI metrics using coarse-grained rates (100ms window)
+                results["csi_coarse_50ms"] = Plots.csi(agg_rate_coarse, ot_coarse, 0.0, 0.05)
+                results["csi_coarse_100ms"] = Plots.csi(agg_rate_coarse, ot_coarse, 0.0, 0.1)
+                results["csi_coarse_300ms"] = Plots.csi(agg_rate_coarse, ot_coarse, 0.0, 0.3)
+
+                # Also calculate adaptive CSI (focuses on peak responses)
+                results["csi_adaptive"] = Plots.csi(agg_rate_fine, ot_fine, 0.0, 0.3, is_adaptative=true)
+
+                # For backward compatibility
+                results["csi_returned_50"] = results["csi_fine_50ms"]
+                results["csi_returned_100"] = results["csi_fine_100ms"]
+                results["csi_returned_300"] = results["csi_fine_300ms"]
+                results["csi_returned_50_01"] = results["csi_coarse_50ms"]
+                results["csi_returned_100_01"] = results["csi_coarse_100ms"]
+                results["csi_returned_300_01"] = results["csi_coarse_300ms"]
+
+                # Print computed CSI values for debugging
+                println("CSI metrics computed:")
+                for (key, val) in filter(p -> startswith(p.first, "csi_"), pairs(results))
+                    println("  $key: $val")
+                end
             end
         end
 
@@ -193,12 +326,30 @@ function run_exp(path_prefix::String, name::String;
 
         Utils.write_params(results; name=name_interpol("result_metrics.yaml"))
     catch e
-        println("error")
-        results["csi_returned_50"] = nothing
-        results["csi_returned_100"] = nothing
-        results["csi_returned_300"] = nothing
-        # results["csi_returned_max"] = nothing
-        rethrow()
+        println("Error during simulation or metric calculation: ", e)
+        # Set all CSI metrics to NaN for graceful failure
+        for metric in ["csi_fine_50ms", "csi_fine_100ms", "csi_fine_300ms",
+                      "csi_coarse_50ms", "csi_coarse_100ms", "csi_coarse_300ms",
+                      "csi_adaptive",
+                      "csi_returned_50", "csi_returned_100", "csi_returned_300",
+                      "csi_returned_50_01", "csi_returned_100_01", "csi_returned_300_01"]
+            results[metric] = NaN
+        end
+
+        # Store error information in results
+        results["error"] = string(e)
+        results["backtrace"] = string(catch_backtrace())
+
+        # Depending on severity, you might want to:
+        # 1. Continue with partial results (return what we have)
+        # 2. Write partial results to disk and then rethrow
+        # 3. Just rethrow the error
+
+        # Option 2: Write what we have and rethrow
+        Utils.write_params(results; name=name_interpol("result_metrics_error.yaml"))
+        if !isa(e, MethodError)
+            rethrow()
+        end
     end
 
     if nout

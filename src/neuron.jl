@@ -8,6 +8,38 @@ const start_input::Float64 = 200e-3
 # const input_duration::Float64 = 200e-3
 const dt_clamp = 5 # ms
 
+"""
+    step_fn(t, iv, sch_onset, sch_group, sch_t, neuron_group)
+
+Evaluates whether to apply an input current to a neuron based on the stimulation schedule.
+
+# Arguments
+- `t`: Current simulation time
+- `iv`: Input value to apply when stimulation is active
+- `sch_onset`: Vector of stimulation durations
+- `sch_group`: Vector of target neuron groups
+- `sch_t`: Vector of stimulation start times
+- `neuron_group`: Group ID of the current neuron
+
+# Returns
+- Returns `iv` if the neuron is in the target group and time is within stimulation period, otherwise 0
+
+# Example
+```julia
+# Schedule with 2 stimuli
+sch_t = [0.2, 0.5]        # Stimuli start at 200ms and 500ms
+sch_onset = [0.05, 0.05]  # Each stimulus lasts 50ms
+sch_group = [1.0, 2.0]    # First stimulus targets group 1, second targets group 2
+neuron_group = 1.0        # Current neuron belongs to group 1
+iv = 5e-9                 # Input current of 5nA
+
+# At t = 0.22s (during first stimulus), for a neuron in group 1
+step_fn(0.22, iv, sch_onset, sch_group, sch_t, neuron_group)  # Returns 5e-9
+
+# At t = 0.52s (during second stimulus), for a neuron in group 1
+step_fn(0.52, iv, sch_onset, sch_group, sch_t, neuron_group)  # Returns 0
+```
+"""
 function step_fn(t, iv, sch_onset, sch_group, sch_t, neuron_group)
     # Vector of (t_start, duration, target)
     t_range = searchsorted(sch_t[:], t)
@@ -29,6 +61,49 @@ function step_input(t, iv)
     )
 end
 
+"""
+    Soma
+
+Adaptive Exponential Integrate-and-Fire (AdEx) neuron model based on:
+Brette & Gerstner (2005), Journal of Neurophysiology 94: 3637-3642.
+
+This model captures both subthreshold resonance and adaptation.
+
+# Variables
+- `v(t)`: Membrane potential (V), initialized at -65mV
+- `w(t)`: Adaptation current (A), initialized at 0
+- `Ie(t)`: Excitatory synaptic input current (A)
+- `Ii(t)`: Inhibitory synaptic input current (A)
+- `Ib(t)`: Basal/stimulus input current (A)
+- `R(t)`: Spike counter, increments by 1 with each spike
+
+# Structural Parameters
+- `n_stims`: Number of stimuli in the schedule
+- `sch_onset`: Vector of stimulation durations
+- `sch_group`: Vector of target neuron groups
+- `sch_t`: Vector of stimulation start times
+
+# Parameters
+- `Je`: Membrane conductance (S)
+- `vrest`: Resting membrane potential (V)
+- `delta`: Slope factor (V)
+- `vthr`: Spike threshold (V)
+- `vspike`: Spike voltage reset value (V)
+- `Cm`: Membrane capacitance (F)
+- `a`: Subthreshold adaptation (S)
+- `b`: Spike-triggered adaptation (A)
+- `TauW`: Adaptation time constant (s)
+- `input_value`: Input current value when neuron is stimulated (A)
+- `duration`: Stimulus duration (s)
+- `group`: Group ID for this neuron (for targeted stimulation)
+- `Ibase`: Baseline current (A)
+
+# Dynamics
+- Membrane potential follows AdEx dynamics with adaptation
+- Adaptation current increases gradually with membrane potential and jumps at spikes
+- Input is applied based on the stimulation schedule
+- Spike events reset voltage and increment adaptation and spike counter
+"""
 @mtkmodel Soma begin # AdEx neuron from https://journals.physiology.org/doi/pdf/10.1152/jn.00686.2005
     @variables begin
         v(t) = -65e-3
@@ -75,6 +150,27 @@ end
     # end
 end
 
+"""
+    SynapseAMPA
+
+AMPA (α-amino-3-hydroxy-5-methyl-4-isoxazolepropionic acid) synapse model.
+Based on: https://neuronaldynamics.epfl.ch/online/Ch3.S1.html#Ch3.E2
+
+This is a first-order kinetic model for excitatory synapses.
+
+# Parameters
+- `tau_ampa`: Time constant for AMPA channel decay (s)
+- `vtarget_exc`: Excitatory reversal potential (V)
+- `inc_gsyn`: Increment of synaptic conductance upon spike arrival (S)
+
+# Variables
+- `g_syn(t)`: Synaptic conductance (S)
+
+# Dynamics
+- Synaptic conductance follows exponential decay with time constant `tau_ampa`
+- Upon spike arrival, conductance is incremented by `inc_gsyn`
+- Current is computed as `I = g_syn * (V - vtarget_exc)` in the neuron model
+"""
 @mtkmodel SynapseAMPA begin # AMPA synapse https://neuronaldynamics.epfl.ch/online/Ch3.S1.html#Ch3.E2
     @parameters begin
         tau_ampa
@@ -90,6 +186,27 @@ end
     end
 end
 
+"""
+    SynapseGABAa
+
+GABAₐ (γ-aminobutyric acid type A) synapse model.
+Based on: https://neuronaldynamics.epfl.ch/online/Ch3.S1.html#Ch3.E2
+
+This is a first-order kinetic model for inhibitory synapses.
+
+# Parameters
+- `tau_GABAa_fast`: Time constant for GABAₐ channel decay (s)
+- `vtarget_inh`: Inhibitory reversal potential (V)
+- `inc_gsyn`: Increment of synaptic conductance upon spike arrival (S)
+
+# Variables
+- `g_syn(t)`: Synaptic conductance (S)
+
+# Dynamics
+- Synaptic conductance follows exponential decay with time constant `tau_GABAa_fast`
+- Upon spike arrival, conductance is incremented by `inc_gsyn`
+- Current is computed as `I = g_syn * (V - vtarget_inh)` in the neuron model
+"""
 @mtkmodel SynapseGABAa begin # GABAa synapse https://neuronaldynamics.epfl.ch/online/Ch3.S1.html#Ch3.E2
     @parameters begin
         tau_GABAa_fast
@@ -164,13 +281,59 @@ function get_synapse_eq(_synapse_type::Nothing, post_neuron::AbstractODESystem):
     nothing
 end
 
+"""
+    get_noise_eq(neuron, sigma)
+
+Generates a noise equation for a neuron model with proper scaling.
+
+# Arguments
+- `neuron::AbstractODESystem`: The neuron model to which noise will be added
+- `sigma::Float64`: Noise intensity parameter (standard deviation)
+
+# Returns
+- `Num`: A noise term properly scaled for use in a stochastic differential equation
+
+# Notes
+- Noise is now independent of voltage to avoid instability issues
+- Using voltage-dependent noise can cause numerical instabilities
+- The constant noise term is scaled by sigma for consistent control over noise intensity
+"""
 function get_noise_eq(neuron::AbstractODESystem, sigma::Float64)::Num
-    # ModelingToolkit.tobrownian(neuron.soma.noise)
-    # neuron.soma.noise ~ sigma * b
-    neuron.soma.v * sigma
-    # sigma
+    # Return constant noise factor independent of voltage
+    # This is more stable than voltage-dependent noise
+    # 0.1*neuron.soma.v * sigma
+    sigma
 end
 
+"""
+    make_neuron(params, soma_model, tspan, name, schedule_p)
+
+Creates a complete neuron model with soma and synaptic components.
+
+# Arguments
+- `params::ComponentArray`: Parameter values for the neuron
+- `soma_model::Model`: Computational model for the soma (e.g., Soma)
+- `tspan::Tuple{Int,Int}`: Time span for the simulation in seconds (start, end)
+- `name::Symbol`: Identifier for the neuron (e.g., :e_neuron_1)
+- `schedule_p`: Stimulation schedule (3×n matrix with rows: times, durations, groups)
+
+# Returns
+- `ODESystem`: A composite model containing the soma and synapse models
+
+# Notes
+- Creates a neuron with both AMPA and GABAₐ synaptic receptors
+- Connects synaptic conductances to the appropriate ionic currents
+- Sets up the stimulation schedule for the neuron
+- Deep copies schedule parameters to prevent shared references
+
+# Example
+```julia
+params = get_adex_neuron_params_skeleton(Float64)
+tspan = (0, 1)  # 0 to 1 second
+schedule = [0.2 0.7; 0.05 0.05; 1.0 2.0]  # Two stimuli at t=0.2s and t=0.7s
+neuron = make_neuron(params, Soma, tspan, :e_neuron_1, schedule)
+```
+"""
 function make_neuron(params::ComponentArray, soma_model::Model, tspan::Tuple{Int,Int}, name::Symbol, schedule_p)::ODESystem
     @named soma = soma_model(; name=Symbol("soma"), n_stims=size(schedule_p, 2), sch_t=deepcopy(schedule_p[1, :]), sch_group=deepcopy(schedule_p[3, :]), sch_onset=deepcopy(schedule_p[2, :]))
     @named ampa_syn = SynapseAMPA(; name=Symbol("ampa_syn"))
@@ -185,6 +348,13 @@ function make_neuron(params::ComponentArray, soma_model::Model, tspan::Tuple{Int
         ), soma, ampa_syn, gabaa_syn
     )
     neuron
+end
+
+# Add Float64 support for tspan
+function make_neuron(params::ComponentArray, soma_model::Model, tspan::Tuple{Int,Float64}, name::Symbol, schedule_p)::ODESystem
+    # Convert to Int tuple for compatibility
+    int_tspan = (tspan[1], Int(ceil(tspan[2])))
+    return make_neuron(params, soma_model, int_tspan, name, schedule_p)
 end
 make_events(premises::Vector{Equation}, pre::AbstractODESystem)::Pair{Vector{Equation},Vector{Equation}} = [pre.soma.v ~ pre.soma.vspike] => vcat(
     [
@@ -218,30 +388,88 @@ function instantiate_connections(id_map::Vector{Any}, map_connect::Matrix{Any}, 
     all_callbacks
 end
 
+"""
+    instantiate_noise(network, neurons, sigma)
+
+Create a noise matrix for stochastic differential equations in a network of neurons.
+
+# Arguments
+- `network::ODESystem`: The neural network system
+- `neurons::Vector{ODESystem}`: Vector of neuron models that need noise
+- `sigma::Float64`: Noise intensity parameter (standard deviation)
+
+# Returns
+- Matrix of noise terms for each differential equation
+
+# Notes
+- Only applies noise to voltage variables (v)
+- Uses a diagonal noise matrix (uncorrelated noise)
+- Uses pattern matching to ensure correct alignment of noise with equations
+"""
 function instantiate_noise(network::ODESystem, neurons::Vector{ODESystem}, sigma::Float64)::Matrix{Any}
-    noise_eqs = get_noise_eq.(neurons, Ref(sigma)) |> Iterators.Stateful
+    # Generate noise equations for each neuron with associated identifiers
+    noise_terms = []
+    for (idx, neuron) in enumerate(neurons)
+        # Extract neuron type and ID from neuron name
+        neuron_name = string(neuron.name)
+        if startswith(neuron_name, "e_")
+            push!(noise_terms, (neuron_name, "e_", idx, get_noise_eq(neuron, sigma)))
+        elseif startswith(neuron_name, "i_")
+            push!(noise_terms, (neuron_name, "i_", idx, get_noise_eq(neuron, sigma)))
+        end
+    end
+
+    # Get all equations from the network
     eqs = equations(network)
-    # eqs_placeholder = Vector{Any}(undef, size(equations(network), 1), size(equations(network), 1))
-    eqs_placeholder::Matrix{Any} = zeros(Float64, size(equations(network), 1), size(equations(network), 1))
+    n_eqs = size(equations(network), 1)
+
+    # Initialize placeholder for diagonal noise matrix
+    eqs_placeholder::Matrix{Any} = zeros(Float64, n_eqs, n_eqs)
+
+    # Regular expression to match voltage differential equations
     re_differential = r"Differential\(t\)\(((?:e_|i_))neuron_(\d+)₊soma₊v\(t\)\)"
-    for i in 1:size(eqs_placeholder, 1)
+
+    # Apply noise only to voltage equations (diagonal noise matrix)
+    for i in 1:n_eqs
         eq = eqs[i]
         match_eq = match(re_differential, string(eq.lhs))
+
         if !isnothing(match_eq)
+            # Extract neuron type and ID from matched equation
             (neuron_type, neuron_id) = match_eq.captures
-            # noise_eq_idx = findfirst(x -> occursin("$(neuron_type)neuron_$(neuron_id)", string(x)), noise_eqs)
-            # eqs_placeholder[i, i] = noise_eqs[noise_eq_idx]
-            eqs_placeholder[i, i] = popfirst!(noise_eqs)
+            neuron_id_int = parse(Int, neuron_id)
+
+            # Find the correct noise term by matching neuron type and ID
+            noise_idx = findfirst(nt -> nt[2] == neuron_type && nt[3] == neuron_id_int, noise_terms)
+
+            if !isnothing(noise_idx)
+                # Assign the matched noise term to this voltage variable
+                eqs_placeholder[i, i] = noise_terms[noise_idx][4]
+            else
+                # Use the generic approach as fallback - search by name pattern
+                eq_str = string(eq.lhs)
+                noise_idx = findfirst(nt -> occursin("$(nt[2])neuron_$(nt[3])", eq_str), noise_terms)
+
+                if !isnothing(noise_idx)
+                    eqs_placeholder[i, i] = noise_terms[noise_idx][4]
+                else
+                    # No matching noise term found - use default value
+                    eqs_placeholder[i, i] = sigma
+                end
+            end
         else
+            # No noise for non-voltage variables (adaptation, synapses, etc.)
             eqs_placeholder[i, i] = 0.0
         end
     end
-    eqs_placeholder
+
+    # Return the complete noise matrix
+    return eqs_placeholder
 end
 
 function infer_connection_from_map(
     neurons::Vector{T} where {T<:AbstractODESystem},
-    mapping::Vector{Any}
+    mapping::Vector{Tuple{Int64, Int64, S}} where {S<:SynapseType}
 )::Tuple{Vector{Any},Array{Union{Nothing,Any}}}
     # take neurons, assign ids, map connections from dict map
     n_neurons = length(neurons)
@@ -270,7 +498,7 @@ function init_connection_map(e_neurons::Vector{T}, i_neurons::Vector{T}, connect
     (id_map, map_connect)
 end
 
-function make_network(neurons::Vector{T}, connections::Vector{Pair{Vector{Equation},Vector{Equation}}})::T where {T<:AbstractODESystem}
+function make_network(neurons::Vector{T}, connections::Vector{Pair{Vector{Equation}, Vector{Equation}}})::T where {T<:AbstractODESystem}
     ModelingToolkit.compose(ODESystem([], t; continuous_events=connections, name=:connected_neurons), neurons)
 end
 

@@ -62,17 +62,17 @@ end
 
 # ╔═╡ 905483e2-78b9-40ed-8421-cd1b406003d9
 begin
-	tspan = (0, 30)
+	tspan = (0, 2)
 	
 	# make schedule
 	# stim_params.n_trials = 20
-	stim_params.amplitude = 5.0e-9
+	stim_params.amplitude = 3.0e-9
 	stim_params.duration = 50.0e-3
 	stim_params.deviant_idx = 2
 	stim_params.standard_idx = 1
 	stim_params.select_size = 0
 	stim_params.p_deviant = 0.10
-	stim_params.start_offset = 2.5
+	stim_params.start_offset = 0.5
 	stim_params.isi = 300e-3
 	
 	stim_schedule = SNN.Params.generate_schedule(stim_params, tspan)
@@ -83,14 +83,14 @@ begin
 	
 	# @time params = Neuron.AdExNeuronParams()
 	params.inc_gsyn = 20.0e-9
-	params.a = 3.0e-9          # Subthreshold adaptation (A)
-	params.b = 8.0e-10          # Spiking adaptation (A)
+	params.a = 0.0e-9          # Subthreshold adaptation (A)
+	params.b = 4.0e-10          # Spiking adaptation (A)
 	params.TauW = 600.0e-3      # Adaptation time constant (s)
 	params.Cm = 3.0e-10
 	
-	params.Ibase = 4.33e-10
+	params.Ibase = 3e-10
 	# params.Ibase = 0
-	params.sigma = 2.0
+	params.sigma = 0.05
 
 	rules = []
 	# push!(rules, SNN.Params.make_rule("e_neuron", 3, "soma__Ibase", 2e-10))
@@ -146,9 +146,9 @@ begin
 	    tspan=tspan,
 	    con_mapping=con_mapping,
 	    stim_schedule=stim_schedule,
-	    # solver=ISSEulerHeun(),
-	    solver=DRI1(),
-		tols=(1e-3, 1e-3)
+	    solver=SKenCarp(),
+	    # solver=DRI1(),
+		tols=(1e-2, 1e-2)
 	)
 	nothing
 end

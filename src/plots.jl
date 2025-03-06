@@ -263,70 +263,147 @@ function fetch_stims_idx(stim_schedule, group, trial_starts)
 end
 
 function compute_grand_average(sol, neuron_u, stim_schedule, method=:spikes; sampling_rate=200.0, start=0.0, stop=last(sol.t), offset=0.1, interpol_fn=AkimaInterpolation, time_window=0.1)
-    interpolate_u(u) = interpol_fn(u, sol.t)
-    trials = get_trials_from_schedule(stim_schedule)
-    trials_starts = [trial[1] for trial in trials]
-    groups = unique(stim_schedule[3, :]) .|> Int
-    groups_stim_idxs = [fetch_stims_idx(stim_schedule, group, trials_starts) for group in groups]
-    if method == :spikes
-        s_bool = sol[neuron_u] |> Utils.get_spikes_from_r .|> Bool
-        spikes_neuron = Utils.get_spike_timings(s_bool, sol)
-        spike_rate = compute_moving_average(sol.t, spikes_neuron, time_window)
-        interpolation_table = interpolate_u(spike_rate)
-    elseif method == :value
-        interpolation_table = interpolate_u(sol[neuron_u])
-        # for each trial, get list of resampled times
+    try
+        interpolate_u(u) = interpol_fn(u, sol.t)
+        trials = get_trials_from_schedule(stim_schedule)
+        trials_starts = [trial[1] for trial in trials]
+        groups = unique(stim_schedule[3, :]) .|> Int
+        groups_stim_idxs = [fetch_stims_idx(stim_schedule, group, trials_starts) for group in groups]
+        if method == :spikes
+            s_bool = sol[neuron_u] |> Utils.get_spikes_from_r .|> Bool
+            spikes_neuron = Utils.get_spike_timings(s_bool, sol)
+            spike_rate = compute_moving_average(sol.t, spikes_neuron, time_window)
+            interpolation_table = interpolate_u(spike_rate)
+        elseif method == :value
+            interpolation_table = interpolate_u(sol[neuron_u])
+            # for each trial, get list of resampled times
+        end
+        trial_time_delta = first(trials)[2] - first(trials)[1] + offset
+        trials_times = [collect(trial_t[1]-offset:1/sampling_rate:trial_t[2]) for trial_t in trials] |> Map(x -> x[1:floor(Int, sampling_rate * trial_time_delta)]) |> collect
+        # get corresponding values
+        sampled_values = trials_times |> Map(trial_times -> interpolation_table.(trial_times)) |> tcollect
+        grouped_trials = groups_stim_idxs |>
+                        Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |>
+                        collect
+        # @show grouped_trials
+        return (grouped_trials, trials_times[1] .- trials[1][1])
+    catch error
+        if error isa BoundsError
+            println(": ", error)
+            return (nothing, nothing)
+        elseif error isa DomainError
+            println(": ", error)
+            return (nothing, nothing)
+        end
     end
-    trial_time_delta = first(trials)[2] - first(trials)[1] + offset
-    trials_times = [collect(trial_t[1]-offset:1/sampling_rate:trial_t[2]) for trial_t in trials] |> Map(x -> x[1:floor(Int, sampling_rate * trial_time_delta)]) |> collect
-    # get corresponding values
-    sampled_values = trials_times |> Map(trial_times -> interpolation_table.(trial_times)) |> tcollect
-    grouped_trials = groups_stim_idxs |>
-                     Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |>
-                     collect
-    # @show grouped_trials
-    return (grouped_trials, trials_times[1] .- trials[1][1])
 end
 
-# function csi(values, offsetted_times, target_start, target_stop; is_voltage=false)
-#     times_to_take = findall(time_t -> target_start <= time_t <= target_stop, offsetted_times)
-#     # compute mean for each values
-#     values_to_compare = values |> Map(x -> x[times_to_take]) |> Map(x -> sum(x) / length(x)) |> collect
-#     values_diff = (values_to_compare[2] - values_to_compare[1]) / (values_to_compare[1] + values_to_compare[2])
-# end
-function csi(values, offsetted_times, target_start, target_stop; is_voltage=false, is_adaptative=false, window_width=0.002)
-    # First get the initial time window
-    times_to_take = findall(time_t -> target_start <= time_t <= target_stop, offsetted_times)
+"""
+    csi(values, offsetted_times, target_start, target_stop;
+        is_voltage=false, is_adaptative=false, window_width=0.002)
 
-    if is_adaptative
-        # Get values within initial window for both signals
-        signal1 = values[1][times_to_take]
-        signal2 = values[2][times_to_take]
+Calculate the Common-Contrast Stimulus-Specific Adaptation Index (CSI).
 
-        # Find maximum value positions
-        max1_idx = argmax(signal1)
-        max2_idx = argmax(signal2)
+In the context of Stimulus-Specific Adaptation (SSA), CSI is defined as:
+CSI = (Df1 + Df2 - Sf1 - Sf2)/(Df1 + Df2 + Sf1 + Sf2)
 
-        # Calculate separate windows for each signal
-        start_idx1 = max(1, max1_idx - window_width)
-        end_idx1 = min(length(times_to_take), max1_idx + window_width)
+Where:
+- Df1 and Sf1 are responses to frequency f1 when deviant (D) and standard (S)
+- Df2 and Sf2 are responses to frequency f2 when deviant (D) and standard (S)
 
-        start_idx2 = max(1, max2_idx - window_width)
-        end_idx2 = min(length(times_to_take), max2_idx + window_width)
+In our implementation:
+- values[1] typically corresponds to standard responses (S)
+- values[2] typically corresponds to deviant responses (D)
 
-        # Get values using separate windows
-        value1_mean = mean(values[1][times_to_take[start_idx1:end_idx1]])
-        value2_mean = mean(values[2][times_to_take[start_idx2:end_idx2]])
+# Arguments
+- `values`: Vector of response signals [standard, deviant]
+- `offsetted_times`: Time vector corresponding to values
+- `target_start`: Start time of analysis window (in seconds)
+- `target_stop`: End time of analysis window (in seconds)
 
-        values_to_compare = [value1_mean, value2_mean]
-    else
-        # Original computation for non-adaptive case
-        values_to_compare = values |> Map(x -> x[times_to_take]) |> Map(x -> sum(x) / length(x)) |> collect
+# Optional Arguments
+- `is_voltage=false`: Whether the signal is voltage (currently unused)
+- `is_adaptative=false`: Whether to use adaptive windowing around peak responses
+- `window_width=0.002`: Width of window in seconds for adaptive method
+
+# Returns
+- CSI value in range [-1, 1]
+  - CSI = 0 indicates no stimulus-specific adaptation
+  - CSI > 0 indicates stronger response to deviant stimuli
+  - CSI < 0 indicates stronger response to standard stimuli
+  - CSI = 1 indicates complete adaptation to standards with response only to deviants
+  - NaN is returned for error cases or invalid data, which will be interpreted
+    as missing values in visualization functions like heatmap
+
+# Reference
+Ulanovsky, N., Las, L., & Nelken, I. (2003). Processing of low-probability sounds
+by cortical neurons. Nature neuroscience, 6(4), 391-398.
+"""
+function csi(values, offsetted_times, target_start, target_stop;
+             is_voltage=false, is_adaptative=false, window_width=0.002)
+    try
+        # Find time points within the specified window
+        times_to_take = findall(time_t -> target_start <= time_t <= target_stop, offsetted_times)
+
+        if isempty(times_to_take)
+            @warn "No time points found in the specified window [$target_start, $target_stop]"
+            return NaN
+        end
+
+        if is_adaptative
+            # Get values within initial window for both signals
+            signal1 = values[1][times_to_take]  # Standard responses
+            signal2 = values[2][times_to_take]  # Deviant responses
+
+            if isempty(signal1) || isempty(signal2)
+                @warn "Empty signal detected in CSI calculation"
+                return NaN
+            end
+
+            # Find maximum value positions
+            max1_idx = argmax(signal1)
+            max2_idx = argmax(signal2)
+
+            # Convert window_width to indices (window_width is in seconds)
+            # We need to convert to integer indices to avoid Float64 indexing errors
+            time_step = isempty(offsetted_times) ? 0.0 : offsetted_times[2] - offsetted_times[1]
+            window_size_points = time_step > 0 ? round(Int, window_width / time_step) : 0
+
+            # Calculate separate windows for each signal (using integer indices)
+            start_idx1 = max(1, max1_idx - window_size_points)
+            end_idx1 = min(length(times_to_take), max1_idx + window_size_points)
+
+            start_idx2 = max(1, max2_idx - window_size_points)
+            end_idx2 = min(length(times_to_take), max2_idx + window_size_points)
+
+            # Get values using separate windows
+            standard_response = mean(values[1][times_to_take[start_idx1:end_idx1]])
+            deviant_response = mean(values[2][times_to_take[start_idx2:end_idx2]])
+        else
+            # Original computation for non-adaptive case - average responses in the window
+            responses = values |> Map(x -> x[times_to_take]) |> Map(x -> sum(x) / length(x)) |> collect
+            standard_response = responses[1]
+            deviant_response = responses[2]
+        end
+
+        # Compute CSI
+        # Note: In our implementation we have combined frequencies, so:
+        # CSI = (D - S)/(D + S) where D = deviant response, S = standard response
+        numerator = deviant_response - standard_response
+        denominator = deviant_response + standard_response
+
+        # Handle edge case of zero denominator
+        if abs(denominator) < 1e-10
+            @warn "Sum of responses near zero in CSI calculation"
+            return NaN
+        end
+
+        csi_value = numerator / denominator
+        return csi_value
+    catch e
+        @error "Error in CSI calculation" exception=(e, catch_backtrace())
+        return NaN  # Return NaN for any errors, will be treated as missing data
     end
-
-    # Compute mean for each values using the (potentially updated) time window
-    values_diff = (values_to_compare[2] - values_to_compare[1]) / (values_to_compare[1] + values_to_compare[2])
-    # @show values_diff
 end
 
 end

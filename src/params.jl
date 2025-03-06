@@ -105,10 +105,17 @@ function check_stims(stims)
 end
 
 function generate_schedule(params::ComponentVector, tspan::Tuple{Int,Int}; is_pseudo_random::Bool=true)::Array{Float64,2}
+    # Implementation for Int, Int tspan
     # Random.seed!(1234)
     # generate sequence detecting paradigm case of deviant or many standard
     # output of shape : (t_start, onset_duration, group)
-    n_trials = div((tspan[2] - params.start_offset), (params.isi + params.duration))
+    # Handle the case where tspan[2] <= params.start_offset to avoid negative n_trials
+    duration = tspan[2] - params.start_offset
+    if duration <= 0
+        n_trials = 0
+    else
+        n_trials = max(1, div(duration, (params.isi + params.duration)))
+    end
     if isnothing(params.deviant_idx)
         n_standard = len(params.standard_idx)
         target_prob = 1 / n_standard
@@ -119,6 +126,11 @@ function generate_schedule(params::ComponentVector, tspan::Tuple{Int,Int}; is_ps
         prob_vector = [1 - target_prob, target_prob]
     end
 
+    # Handle case where n_trials is 0 - create empty schedule
+    if n_trials == 0
+        return Array{Float64,2}(undef, 3, 0)
+    end
+    
     stim_distribution = Categorical(prob_vector)
     stims = rand(stim_distribution, Int(n_trials))
 
@@ -218,4 +230,12 @@ macro connect_neurons(pre_neurons, synapse, post_neurons)
         connections_set
     end |> esc
 end
+
+# Add overload for Tuple{Int,Float64} to handle the type in tests
+function generate_schedule(params::ComponentVector, tspan::Tuple{Int,Float64}; is_pseudo_random::Bool=true)::Array{Float64,2}
+    # Convert the Float64 to Int for compatibility - use ceil to ensure we don't truncate time
+    int_tspan = (tspan[1], Int(ceil(tspan[2])))
+    return generate_schedule(params, int_tspan; is_pseudo_random=is_pseudo_random)
+end
+
 end
