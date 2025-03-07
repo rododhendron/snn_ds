@@ -58,7 +58,7 @@ function run_exp(path_prefix::String, name::String;
     params::ComponentVector,
     stim_params::ComponentVector,
     stim_schedule::Array{Float64,2},
-    tspan::Union{Tuple{Int,Int}, Tuple{Int,Float64}},
+    tspan::Union{Tuple{Int,Int},Tuple{Int,Float64}},
     con_mapping=nothing,
     prob_con::Tuple{Float64,Float64,Float64,Float64}=(0.05, 0.05, 0.05, 0.05),
     remake_prob::Any=nothing,
@@ -178,11 +178,11 @@ function run_exp(path_prefix::String, name::String;
     end
 
     # Set default parameters for solver if not provided
-    dtmax = min(1e-3, (tspan[2] - tspan[1])/1000) # Limit max step size based on simulation duration
+    dtmax = min(1e-3, (tspan[2] - tspan[1]) / 1000) # Limit max step size based on simulation duration
 
     # Use a starting dt that's meaningful but doesn't constrain the adaptive stepping too much
     # For SDEs, a smaller starting dt is generally safer
-    dt_init = min(1e-5, (tspan[2] - tspan[1])/10000)
+    dt_init = min(1e-5, (tspan[2] - tspan[1]) / 10000)
 
     println("Solving with tolerances: abstol=$(tols[1]), reltol=$(tols[2]), dtmax=$dtmax")
 
@@ -190,14 +190,14 @@ function run_exp(path_prefix::String, name::String;
     if any(typeof(solver) .== [SOSRI, SOSRA, ImplicitRKMil, SRA, SRI])
         # For SDE solvers
         sol = solve(prob, solver, abstol=tols[1], reltol=tols[2],
-                    dt=dt_init, dtmax=dtmax,
-                    adaptive=true, progress=true, progress_steps=100,
-                    internalnorm=(u,t) -> sqrt(sum(abs2, u)/length(u)))
+            dt=dt_init, dtmax=dtmax,
+            adaptive=true, progress=true, progress_steps=100,
+            internalnorm=(u, t) -> sqrt(sum(abs2, u) / length(u)))
     else
         # For ODE solvers
         sol = solve(prob, solver, abstol=tols[1], reltol=tols[2],
-                    dt=dt_init, dtmax=dtmax,
-                    adaptive=true, progress=true, progress_steps=100)
+            dt=dt_init, dtmax=dtmax,
+            adaptive=true, progress=true, progress_steps=100)
     end
 
     (start, stop) = tspan
@@ -211,19 +211,19 @@ function run_exp(path_prefix::String, name::String;
         Utils.write_params(stim_params; name=name_interpol("stim_params.yaml"))
         Utils.write_params(iparams; name=name_interpol("iparams.yaml"))
         Utils.write_params(iuparams; name=name_interpol("iuparams.yaml"))
-        for i in 1:e_neurons_n
-            @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
-            @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
-            @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
-            @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.1)
-            @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.05)
-            @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.01)
-            (grouped_trials, offsetted_times) = Plots.compute_grand_average(sol, Plots.fetch_tree_neuron_value("e_neuron", i, "v", tree) |> first, stim_schedule, :value; interpol_fn=LinearInterpolation, sampling_rate=2000)
-            Plots.plot_neuron_value(offsetted_times, grouped_trials, nothing, nothing, [0.0, 0.05]; start=-0.1, stop=maximum(offsetted_times), title="gdavg voltage neuron $(i)", name=name_interpol("gdavg_e_3_voltage.png"), schedule=stim_schedule, tofile=true, ylabel="voltage (in V)", xlabel="Time (in s)", multi=true, plot_stims=false)
-            (agg_rate, ot) = Plots.compute_grand_average(sol, Plots.fetch_tree_neuron_value("e_neuron", i, "R", tree) |> first, stim_schedule, :spikes; interpol_fn=LinearInterpolation, time_window=0.01, sampling_rate=2000)
-            Plots.plot_neuron_value(ot, agg_rate, nothing, nothing, [0.0, 0.05]; start=-0.1, stop=maximum(offsetted_times), title="gdavg spike rate neuron $(i)", name=name_interpol("gdavg_e_3_rate.png"), schedule=stim_schedule, tofile=true, ylabel="spike rate (in Hz)", xlabel="Time (in s)", multi=true, plot_stims=false)
-            # @time Plots.plot_aggregated_rate(i, sol, name_interpol, tree, stim_schedule, true)
-        end
+        # for i in 1:e_neurons_n
+        # @time Plots.plot_excitator_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
+        # @time Plots.plot_adaptation_value(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
+        # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true)
+        # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.1)
+        # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.05)
+        # @time Plots.plot_spike_rate(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, true; time_window=0.01)
+        # (grouped_trials, offsetted_times) = Plots.compute_grand_average(sol, Plots.fetch_tree_neuron_value("e_neuron", i, "v", tree) |> first, stim_schedule, :value; interpol_fn=LinearInterpolation, sampling_rate=2000)
+        # Plots.plot_neuron_value(offsetted_times, grouped_trials, nothing, nothing, [0.0, 0.05]; start=-0.1, stop=maximum(offsetted_times), title="gdavg voltage neuron $(i)", name=name_interpol("gdavg_e_3_voltage.png"), schedule=stim_schedule, tofile=true, ylabel="voltage (in V)", xlabel="Time (in s)", multi=true, plot_stims=false)
+        # (agg_rate, ot) = Plots.compute_grand_average(sol, Plots.fetch_tree_neuron_value("e_neuron", i, "R", tree) |> first, stim_schedule, :spikes; interpol_fn=LinearInterpolation, time_window=0.01, sampling_rate=2000)
+        # Plots.plot_neuron_value(ot, agg_rate, nothing, nothing, [0.0, 0.05]; start=-0.1, stop=maximum(offsetted_times), title="gdavg spike rate neuron $(i)", name=name_interpol("gdavg_e_3_rate.png"), schedule=stim_schedule, tofile=true, ylabel="spike rate (in Hz)", xlabel="Time (in s)", multi=true, plot_stims=false)
+        # @time Plots.plot_aggregated_rate(i, sol, name_interpol, tree, stim_schedule, true)
+        # end
 
         res = Utils.fetch_tree(["e_neuron", "R"], tree)
         ma = Utils.hcat_sol_matrix(res, sol)
@@ -307,13 +307,8 @@ function run_exp(path_prefix::String, name::String;
                 # Also calculate adaptive CSI (focuses on peak responses)
                 results["csi_adaptive"] = Plots.csi(agg_rate_fine, ot_fine, 0.0, 0.3, is_adaptative=true)
 
-                # For backward compatibility
-                results["csi_returned_50"] = results["csi_fine_50ms"]
-                results["csi_returned_100"] = results["csi_fine_100ms"]
-                results["csi_returned_300"] = results["csi_fine_300ms"]
-                results["csi_returned_50_01"] = results["csi_coarse_50ms"]
-                results["csi_returned_100_01"] = results["csi_coarse_100ms"]
-                results["csi_returned_300_01"] = results["csi_coarse_300ms"]
+                results_csis = [results[k] for k in keys(results) if startswith(k, "csi_")]
+                results["sum_metrics"] = sum(values(results))
 
                 # Print computed CSI values for debugging
                 println("CSI metrics computed:")
@@ -330,10 +325,10 @@ function run_exp(path_prefix::String, name::String;
         println("Error during simulation or metric calculation: ", e)
         # Set all CSI metrics to NaN for graceful failure
         for metric in ["csi_fine_50ms", "csi_fine_100ms", "csi_fine_300ms",
-                      "csi_coarse_50ms", "csi_coarse_100ms", "csi_coarse_300ms",
-                      "csi_adaptive",
-                      "csi_returned_50", "csi_returned_100", "csi_returned_300",
-                      "csi_returned_50_01", "csi_returned_100_01", "csi_returned_300_01"]
+            "csi_coarse_50ms", "csi_coarse_100ms", "csi_coarse_300ms",
+            "csi_adaptive",
+            "csi_returned_50", "csi_returned_100", "csi_returned_300",
+            "csi_returned_50_01", "csi_returned_100_01", "csi_returned_300_01"]
             results[metric] = NaN
         end
 

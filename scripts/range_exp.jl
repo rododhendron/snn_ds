@@ -10,6 +10,7 @@ using Base.Threads
 using Distributed
 using SharedArrays
 using DifferentialEquations, ProgressMeter
+using JLD2
 
 # Add some workers and initialize with all `@always_everywhere` code:
 old_nprocs = nprocs()
@@ -80,14 +81,14 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
         end
     end
 
-    memlimit = 8 * 1000^2
+    memlimit = 7 * 1000^2
     # Optional: Set a custom memory limit for worker processes:
     Distributed.myid() != 1 && memlimit
 
     # e_neurons_n = 5
 
     # a & b
-    # param_a_range = 1.0e-10:1.0e-10:6.0e-9
+    param_b_range = 1.0e-10:4.0e-10:6.0e-9
     # param_b_range = 2.0e-12:4e-12:9.0e-11
 
     # param_a_range = 1.0e-9:0.5e-9:18.0e-9
@@ -95,17 +96,17 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
 
     # param_to_change_a = :a
     # param_to_change_b = :b
-    param_a_range = 0.01:0.02:2.0
+    param_a_range = 0.001:0.01:0.5
     param_to_change_a = :sigma
 
     # param_a_range = 0.01:0.05:3.0
     # param_b_range = 0.1:0.1:3.0
     # param_to_change_a = :a
-    # param_to_change_b = :a
+    param_to_change_b = :a
     # param_b_range = 0.1:0.1:3.0
     # param_to_change_a = :a
-    param_b_range = 1.0e-12:0.1e-11:10.0e-11
-    param_to_change_b = :b
+    # param_b_range = 1.0e-12:0.1e-11:10.0e-11
+    # param_to_change_b = :b
     # param_to_change_b = :sigma
 
     # make schedule
@@ -124,7 +125,7 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
     con_mapping_nested = [
         (SNN.Params.@connect_neurons [1, 2] SNN.Neuron.AMPA() 3),
     ]
-    con_mapping = reduce(vcat, con_mapping_nested)
+    con_mapping::Array{Tuple{Int64,Int64,SNN.Neuron.SynapseType},1} = reduce(vcat, con_mapping_nested)
 
     pre_neurons = [row[1] for row in con_mapping]
     post_neurons = [row[2] for row in con_mapping]
@@ -133,10 +134,10 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
     #
     l = ReentrantLock()
     # tols = (1e-2, 1e-2)
-    tols = (5e-2, 5e-2)
+    tols = (2e-3, 2e-3)
 
-    # solver = DRI1()
-    solver = EulerHeun()
+    solver = DRI1()
+    # solver = EulerHeun()
 
     run_model_for_ij!(indices) = run_model!(
         params,
@@ -239,11 +240,16 @@ returns = @showprogress pmap(row -> run_model_for_ij!(row), pool, indices; retry
 # returns = @showprogress @onprocs(row -> run_model_for_ij!(row), indices; retry_delays=ones(4))
 @show returns
 
+@save "csis_results.jld2" returns
+
+
 for k in keys(returns[1])
-    heatmap_values = (collect(param_a_range), collect(param_b_range), get.(returns, k, nothing))
-    @show heatmap_values
-    SNN.Plots.plot_heatmap(
-        heatmap_values,
-        title="csi over params search", name="results/$(UID)/base_3_adaptation_scan_$(string(param_to_change_a))_$(string(param_to_change_b))_$k.png", tofile=true, xlabel=String(param_to_change_a), ylabel=String(param_to_change_b)
-    )
+    if occursin("csi", k)
+        heatmap_values = (collect(param_a_range), collect(param_b_range), get.(returns, k, nothing))
+        @show heatmap_values
+        SNN.Plots.plot_heatmap(
+            heatmap_values,
+            title="csi over params search", name="results/$(UID)/base_3_adaptation_scan_$(string(param_to_change_a))_$(string(param_to_change_b))_$k.png", tofile=true, xlabel=String(param_to_change_a), ylabel=String(param_to_change_b)
+        )
+    end
 end
