@@ -234,11 +234,11 @@ function plot_adaptation_value(i, sol, start, stop, name_interpol, tree::ParamTr
     Plots.plot_neuron_value(sol.t, sol[e_w], nothing, nothing, offset; start=start, stop=stop, title="adaptation of e $i", name=name_interpol("adaptation_e_$i.png"), schedule=schedule, is_voltage=false, tofile=tofile)
 end
 
-function plot_heatmap(values; xlabel="", ylabel="", title="", tofile=true, name="")
+function plot_heatmap(values; xlabel="", ylabel="", title="", tofile=true, name="", colorrange=Makie.automatic)
     # values is shape (vector x, y and z)
     heatfig = Figure(size=(900, 700))
     ax_heat = heatfig[1, 1] = Axis(heatfig; title=title, xlabel=xlabel, ylabel=ylabel)
-    hm = heatmap!(ax_heat, values..., colormap=:thermal)
+    hm = heatmap!(ax_heat, values..., colormap=:bluesreds, colorrange=colorrange)
     Colorbar(heatfig[1, 2], hm)
     tofile ? save(name, heatfig) : heatfig
 end
@@ -286,8 +286,8 @@ function compute_grand_average(sol, neuron_u, stim_schedule, method=:spikes; sam
         # get corresponding values
         sampled_values = trials_times |> Map(trial_times -> interpolation_table.(trial_times)) |> tcollect
         grouped_trials = groups_stim_idxs |>
-                        Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |>
-                        collect
+                         Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |>
+                         collect
         # @show grouped_trials
         return (grouped_trials, trials_times[1] .- trials[1][1])
     catch error
@@ -342,7 +342,7 @@ Ulanovsky, N., Las, L., & Nelken, I. (2003). Processing of low-probability sound
 by cortical neurons. Nature neuroscience, 6(4), 391-398.
 """
 function csi(values, offsetted_times, target_start, target_stop;
-             is_voltage=false, is_adaptative=false, window_width=0.002)
+    is_voltage=false, is_adaptative=false, window_width=0.002)
     try
         # Find time points within the specified window
         times_to_take = findall(time_t -> target_start <= time_t <= target_stop, offsetted_times)
@@ -403,7 +403,7 @@ function csi(values, offsetted_times, target_start, target_stop;
         csi_value = numerator / denominator
         return csi_value
     catch e
-        @error "Error in CSI calculation" exception=(e, catch_backtrace())
+        @error "Error in CSI calculation" exception = (e, catch_backtrace())
         return NaN  # Return NaN for any errors, will be treated as missing data
     end
 end

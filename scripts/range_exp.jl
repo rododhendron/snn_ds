@@ -88,21 +88,21 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
     # e_neurons_n = 5
 
     # a & b
-    param_b_range = 1.0e-10:4.0e-10:6.0e-9
-    # param_b_range = 2.0e-12:4e-12:9.0e-11
+    #param_b_range = 1.0e-10:4.0e-10:6.0e-9
+    param_b_range = 0.0e-12:0.5e-12:9.0e-11
 
     # param_a_range = 1.0e-9:0.5e-9:18.0e-9
     # param_b_range = 50:50:1200
 
     # param_to_change_a = :a
     # param_to_change_b = :b
-    param_a_range = 0.001:0.01:0.5
+    param_a_range = 0.00001:0.01:0.2
     param_to_change_a = :sigma
 
     # param_a_range = 0.01:0.05:3.0
     # param_b_range = 0.1:0.1:3.0
     # param_to_change_a = :a
-    param_to_change_b = :a
+    param_to_change_b = :b
     # param_b_range = 0.1:0.1:3.0
     # param_to_change_a = :a
     # param_b_range = 1.0e-12:0.1e-11:10.0e-11
@@ -245,11 +245,25 @@ returns = @showprogress pmap(row -> run_model_for_ij!(row), pool, indices; retry
 
 for k in keys(returns[1])
     if occursin("csi", k)
-        heatmap_values = (collect(param_a_range), collect(param_b_range), get.(returns, k, nothing))
+        heatmap_values = (collect(param_a_range), collect(param_b_range), get.(returns, k, NaN))
         @show heatmap_values
         SNN.Plots.plot_heatmap(
             heatmap_values,
-            title="csi over params search", name="results/$(UID)/base_3_adaptation_scan_$(string(param_to_change_a))_$(string(param_to_change_b))_$k.png", tofile=true, xlabel=String(param_to_change_a), ylabel=String(param_to_change_b)
+            title="csi over params search",
+            name="results/$(UID)/base_3_adaptation_scan_$(string(param_to_change_a))_$(string(param_to_change_b))_$k.png",
+            tofile=true,
+            xlabel=String(param_to_change_a),
+            ylabel=String(param_to_change_b),
+            colorrange=(-1.0, 1.0)
+        )
+        SNN.Plots.plot_heatmap(
+            heatmap_values,
+            title="csi over params search",
+            name="results/$(UID)/base_3_adaptation_scan_$(string(param_to_change_a))_$(string(param_to_change_b))_$(k)_centered.png",
+            tofile=true,
+            xlabel=String(param_to_change_a),
+            ylabel=String(param_to_change_b),
+            colorrange=(-0.5, 0.5)
         )
     end
 end

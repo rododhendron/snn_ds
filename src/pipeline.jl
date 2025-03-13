@@ -187,7 +187,7 @@ function run_exp(path_prefix::String, name::String;
     println("Solving with tolerances: abstol=$(tols[1]), reltol=$(tols[2]), dtmax=$dtmax")
 
     # Different solvers may benefit from different configurations
-    if any(typeof(solver) .== [SOSRI, SOSRA, ImplicitRKMil, SRA, SRI])
+    if any(typeof(solver) .== [SOSRI, SOSRA, ImplicitRKMil, SRA, SRI, DRI1])
         # For SDE solvers
         sol = solve(prob, solver, abstol=tols[1], reltol=tols[2],
             dt=dt_init, dtmax=dtmax,
@@ -308,7 +308,7 @@ function run_exp(path_prefix::String, name::String;
                 results["csi_adaptive"] = Plots.csi(agg_rate_fine, ot_fine, 0.0, 0.3, is_adaptative=true)
 
                 results_csis = [results[k] for k in keys(results) if startswith(k, "csi_")]
-                results["sum_metrics"] = sum(values(results))
+                results["csi_sum_metrics"] = sum(values(results_csis)) / length(results_csis)
 
                 # Print computed CSI values for debugging
                 println("CSI metrics computed:")
