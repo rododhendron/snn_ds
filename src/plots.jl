@@ -58,7 +58,13 @@ function make_fig(; xlabel="", ylabel="", title="", height=700, width=1600, ytic
     end
 end
 
-function plot_agg_value(times, values; xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false, schedule=[], offset=0)
+function plot_xy(x, y; xlabel="", ylabel="", title="", name="", tofile=true)
+    f, ax = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title)
+    lines!(ax, x, y)
+    tofile ? save(name, f) : f
+end
+
+function plot_agg_value(times, values, grp_idx; xlabel="", ylabel="", title="", name="", tofile=true, is_voltage=false, schedule=[], offset=0)
     f, ax, ax2, ax_stims = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title)
 
     colormap = :Set1_5
@@ -66,7 +72,7 @@ function plot_agg_value(times, values; xlabel="", ylabel="", title="", name="", 
     # color = resample_cmap(colormap, size(groups, 1))
     color = [:blue, :red]
     for group in 1:length(groups)
-        idxs = findall(x -> x == group, schedule[3, :])
+        idxs = findall(x -> x == group, grp_idx)
         g_times = times[idxs]
         g_values = values[idxs]
         points = []
@@ -214,18 +220,35 @@ function trial_to_idxs(trial_ranges, sol_t::Vector{Float64})
     trial_ranges |> Map(x -> findall(ts -> x[1] < ts < x[2], sol_t)) |> collect
 end
 
+function get_trial_groups(trial_starts, stim_schedule)
+    # Extract relevant rows
+    start_times = stim_schedule[1, :]
+    group_values = stim_schedule[3, :]
+
+    # Create a matrix where each row corresponds to a trial start
+    # and each column to a start_time. True where they match.
+    match_matrix = isapprox.(trial_starts, permutedims(start_times), atol=1e-12)
+
+    # Use matrix multiplication to directly compute the result
+    # Each row in match_matrix has exactly one true value (1.0),
+    # so this effectively selects the corresponding group value
+    return vec(match_matrix * group_values)
+end
+
 function plot_aggregated_rate(i, sol, name_interpol, tree::ParamTree, schedule_p, tofile=false)
     e_r = fetch_tree_neuron_value("e_neuron", i, "R", tree)
     e_v = fetch_tree_neuron_value("e_neuron", i, "v", tree)
 
     spikes = sol[e_r] |> Utils.get_spikes_from_r .|> Bool |> sp -> Utils.get_spike_timings(sp, sol)
-    trials = get_trials_from_schedule(schedule_p) |> x -> trial_to_idxs(x, sol.t)
+    trials_ts = get_trials_from_schedule(schedule_p)
+    trials = trials_ts |> x -> trial_to_idxs(x, sol.t)
     trial_values = trials |> Map(trial -> sol[e_v][trial]) |> collect
-    trial_starts = schedule_p[1, :]
+    trial_starts = first.(trials_ts)
     trial_times = trials |> Map(trial -> sol.t[trial]) |> collect
     trial_t_offsetted = [trial_times[i] .- Ref(trial_starts[i]) for i in axes(trial_starts, 1)]
 
-    Plots.plot_agg_value(trial_t_offsetted, trial_values; title="trials of e $i", name=name_interpol("trials_$i.png"), tofile=tofile, schedule=schedule_p)
+    grp_idx = get_trial_groups(trial_starts, schedule_p)
+    Plots.plot_agg_value(trial_t_offsetted, trial_values, grp_idx; title="trials of e $i", name=name_interpol("trials_$i.png"), tofile=tofile, schedule=schedule_p)
 end
 
 function plot_adaptation_value(i, sol, start, stop, name_interpol, tree::ParamTree, offset, schedule, tofile=false)
@@ -286,8 +309,8 @@ function compute_grand_average(sol, neuron_u, stim_schedule, method=:spikes; sam
         # get corresponding values
         sampled_values = trials_times |> Map(trial_times -> interpolation_table.(trial_times)) |> tcollect
         grouped_trials = groups_stim_idxs |>
-                        Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |>
-                        collect
+                         Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |>
+                         collect
         # @show grouped_trials
         return (grouped_trials, trials_times[1] .- trials[1][1])
     catch error
@@ -342,7 +365,7 @@ Ulanovsky, N., Las, L., & Nelken, I. (2003). Processing of low-probability sound
 by cortical neurons. Nature neuroscience, 6(4), 391-398.
 """
 function csi(values, offsetted_times, target_start, target_stop;
-             is_voltage=false, is_adaptative=false, window_width=0.002)
+    is_voltage=false, is_adaptative=false, window_width=0.002)
     try
         # Find time points within the specified window
         times_to_take = findall(time_t -> target_start <= time_t <= target_stop, offsetted_times)
@@ -403,7 +426,7 @@ function csi(values, offsetted_times, target_start, target_stop;
         csi_value = numerator / denominator
         return csi_value
     catch e
-        @error "Error in CSI calculation" exception=(e, catch_backtrace())
+        @error "Error in CSI calculation" exception = (e, catch_backtrace())
         return NaN  # Return NaN for any errors, will be treated as missing data
     end
 end

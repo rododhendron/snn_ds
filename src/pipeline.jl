@@ -343,7 +343,7 @@ function run_exp(path_prefix::String, name::String;
 
         # Option 2: Write what we have and rethrow
         Utils.write_params(results; name=name_interpol("result_metrics_error.yaml"))
-        if !isa(e, MethodError)
+        if !isa(e, Union{MethodError, BoundsError})
             rethrow()
         end
     end

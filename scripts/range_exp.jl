@@ -11,6 +11,7 @@ using Distributed
 using SharedArrays
 using DifferentialEquations, ProgressMeter
 using JLD2
+using CairoMakie
 
 # Add some workers and initialize with all `@always_everywhere` code:
 old_nprocs = nprocs()
@@ -167,10 +168,15 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
         monitor_and_kill(memlimit)
         (i, j) = indices
         new_pars = deepcopy(params)
-        new_pars[param_to_change_a] = param_i = param_a_range[i]
-        new_pars[param_to_change_b] = param_j = param_b_range[j]
+        if isnothing(j)
+            new_pars[param_to_change_a] = param_i = param_a_range[i]
+            name = "base_3_adaptation_" * string(param_to_change_a) * "=" * string(param_i)
+        else
+            new_pars[param_to_change_a] = param_i = param_a_range[i]
+            new_pars[param_to_change_b] = param_j = param_b_range[j]
+            name = "base_3_adaptation_" * string(param_to_change_a) * "=" * string(param_i) * "_" * string(param_to_change_b) * "=" * string(param_j)
+        end
 
-        name = "base_3_adaptation_" * string(param_to_change_a) * "=" * string(param_i) * "_" * string(param_to_change_b) * "=" * string(param_j)
         out_path_prefix = "results/$(UID)/"
         csi_i = SNN.Pipeline.run_exp(
             out_path_prefix, name;
@@ -217,7 +223,8 @@ pb_len = length(param_b_range)
 pa_len = length(param_a_range)
 
 Random.seed!(1234)
-indices = [(i, j) for i in 1:pa_len, j in 1:pb_len]
+#indices = [(i, j) for i in 1:pa_len, j in 1:pb_len]
+indices = [(i, nothing) for i in 1:pa_len]
 
 function spawn_workers()
     println("try spawning...")
@@ -245,11 +252,19 @@ returns = @showprogress pmap(row -> run_model_for_ij!(row), pool, indices; retry
 
 for k in keys(returns[1])
     if occursin("csi", k)
-        heatmap_values = (collect(param_a_range), collect(param_b_range), get.(returns, k, nothing))
-        @show heatmap_values
-        SNN.Plots.plot_heatmap(
-            heatmap_values,
-            title="csi over params search", name="results/$(UID)/base_3_adaptation_scan_$(string(param_to_change_a))_$(string(param_to_change_b))_$k.png", tofile=true, xlabel=String(param_to_change_a), ylabel=String(param_to_change_b)
-        )
+        values = get.(returns, k, nothing)
+        if length(size(values)) == 2
+            heatmap_values = (collect(param_a_range), collect(param_b_range), values)
+            SNN.Plots.plot_heatmap(
+                heatmap_values,
+                title="csi over params search", name="results/$(UID)/base_3_adaptation_scan_$(string(param_to_change_a))_$(string(param_to_change_b))_$k.png", tofile=true, xlabel=String(param_to_change_a), ylabel=String(param_to_change_b)
+            )
+        elseif length(size(values)) == 1
+            SNN.Plots.plot_xy(
+                collect(param_a_range),
+                values,
+                title="csi over params search", name="results/$(UID)/base_3_adaptation_scan_$(string(param_to_change_a))_$k.png", tofile=true, xlabel=String(param_to_change_a), ylabel=k
+            )
+        end
     end
 end

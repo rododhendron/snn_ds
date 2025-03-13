@@ -62,11 +62,11 @@ end
 
 # ╔═╡ 905483e2-78b9-40ed-8421-cd1b406003d9
 begin
-	tspan = (0, 2)
+	tspan = (0, 4)
 	
 	# make schedule
 	# stim_params.n_trials = 20
-	stim_params.amplitude = 3.0e-9
+	stim_params.amplitude = 2.5e-9
 	stim_params.duration = 50.0e-3
 	stim_params.deviant_idx = 2
 	stim_params.standard_idx = 1
@@ -82,15 +82,15 @@ begin
 	sch_group = deepcopy(stim_schedule[3, :])
 	
 	# @time params = Neuron.AdExNeuronParams()
-	params.inc_gsyn = 20.0e-9
+	params.inc_gsyn = 40.0e-9
 	params.a = 0.0e-9          # Subthreshold adaptation (A)
 	params.b = 4.0e-10          # Spiking adaptation (A)
 	params.TauW = 600.0e-3      # Adaptation time constant (s)
-	params.Cm = 3.0e-10
+	params.Cm = 4.0e-10
 	
-	params.Ibase = 3e-10
+	params.Ibase = 4e-10
 	# params.Ibase = 0
-	params.sigma = 0.05
+	params.sigma = 0.08
 
 	rules = []
 	# push!(rules, SNN.Params.make_rule("e_neuron", 3, "soma__Ibase", 2e-10))
@@ -133,12 +133,9 @@ end
 # ╔═╡ 1b5b20d7-3934-406a-9d9e-2af0ad2c13db
 arr::Matrix{Any} = fill(0.0, 10, 10)
 
-# ╔═╡ 1f069d6f-4ead-49c5-84da-957c15d69074
-
-
 # ╔═╡ 32e92fca-36d3-4ebd-a228-fd6b3f965694
 begin
-	(sol, simplified_model, prob) = SNN.Pipeline.run_exp(
+	(sol, simplified_model, prob, results, neurons) = SNN.Pipeline.run_exp(
 	    out_path_prefix, name;
 	    e_neurons_n=e_neurons_n,
 	    params=merged_params,
@@ -212,6 +209,12 @@ size(sol.t)
 # ╔═╡ fc6227bc-9036-41d9-8fe3-4f947a227fe0
 @time SNN.Plots.plot_aggregated_rate(i, sol, name_interpol, tree, stim_schedule, false)
 
+# ╔═╡ 16d3f08f-20a3-4ece-93c6-0b8aa732a79e
+
+
+# ╔═╡ d29f9797-b2d5-4125-9a80-e2695f4a759a
+sol
+
 # ╔═╡ 63ebbfb4-ae1e-4d80-a08f-ee35a1fdbcfb
 @time SNN.Plots.plot_isi(i, sol, start, stop, name_interpol, tree, stim_params.start_offset, stim_schedule, false)
 
@@ -239,6 +242,9 @@ begin
     @show groups_spikes
 	first(diff(groups_spikes)) / sum(groups_spikes)
 end
+
+# ╔═╡ 073eda4b-62bb-41ff-86d1-e4e17f1c32cc
+results
 
 # ╔═╡ bc881bde-e581-4459-8ee3-ce0cc7fefb6d
 sol[0.0, readout]
@@ -332,49 +338,13 @@ typeof(64)
 sol[first(readout)]
 
 # ╔═╡ 96951fbb-ba5a-4606-ac04-e3c9bd70c0d2
-(agg_rate, ot) = SNN.Plots.compute_grand_average(sol, first(readout), stim_schedule, :spikes; interpol_fn=AkimaInterpolation, time_window=0.01, sampling_rate=20000)
+(agg_rate, ot) = SNN.Plots.compute_grand_average(sol, first(readout), stim_schedule, :spikes; interpol_fn=LinearInterpolation, time_window=0.01, sampling_rate=20000)
 
-# ╔═╡ a0923e08-6ad3-45c9-9d0e-3a5d78338749
-function compute_grand_average(sol, neuron_u, stim_schedule, method=:spikes; sampling_rate=200.0, start=0.0, stop=last(sol.t), offset=0.1, interpol_fn=AkimaInterpolation, time_window=0.1)
-	interpolate_u(u) = interpol_fn(u, sol.t)
-    trials = SNN.Plots.get_trials_from_schedule(stim_schedule)
-    groups = unique(stim_schedule[3, :]) .|> Int
-    groups_stim_idxs = [findall(row -> row == group, stim_schedule[3, :]) for group in groups]
-    if method == :spikes
-        s_bool = sol[neuron_u] |> SNN.Utils.get_spikes_from_r .|> Bool
-        spikes_neuron = SNN.Utils.get_spike_timings(s_bool, sol)
-		@show size(spikes_neuron)
-		@show spikes_neuron
-        spike_rate = SNN.Plots.compute_moving_average(sol.t, spikes_neuron, time_window)
-		@show spike_rate[1:20]
-        @show size(s_bool)
-        @show size(spikes_neuron)
-        @show size(spike_rate)
-        interpolation_table = interpolate_u(spike_rate)
-    elseif method == :value
-        interpolation_table = interpolate_u(sol[neuron_u])
-        # for each trial, get list of resampled times
-    end
-    @show trials[1]
-    trial_time_delta = first(trials)[2] - first(trials)[1] + offset
-    trials_times = [collect(trial_t[1]-offset:1/sampling_rate:trial_t[2]) for trial_t in trials] |> Map(x -> x[1:floor(Int, sampling_rate * trial_time_delta)]) |> collect
-    # get corresponding values
-    sampled_values = trials_times |> Map(trial_times -> interpolation_table.(trial_times)) |> tcollect
-    # @show sampled_values
-    @assert size(trials_times, 1) == size(sampled_values, 1) == size(stim_schedule, 2)
-    @show size(sampled_values)
-    @show size(trials_times)
-    @show size(sampled_values[groups_stim_idxs[1]])
-    @show size(sampled_values[groups_stim_idxs[2]])
-    grouped_trials = groups_stim_idxs |>
-        Map(trial_idxs -> sum(sampled_values[trial_idxs]) ./ length(sampled_values[trial_idxs])) |>
-        collect
-    # @show grouped_trials
-    return(grouped_trials, trials_times[1] .- trials[1][1])
-end
+# ╔═╡ bb10b285-6dd6-411f-bfc0-7d27d086c428
+SNN.Plots.plot_neuron_value(ot, agg_rate, nothing, nothing, [0.0, 0.05]; start=-0.1, stop=maximum(offsetted_times), title="gdavg voltage neuron $(i)", name=name_interpol("gdavg_e_3_voltage.png"), schedule=stim_schedule, tofile=false, ylabel="voltage (in V)", xlabel="Time (in s)", multi=true, plot_stims=false)
 
 # ╔═╡ 46073470-7f50-4cd4-98a7-3eb5043e6bab
-(agg_rate_1, ot_1) = compute_grand_average(sol, first(readout), stim_schedule, :spikes; interpol_fn=AkimaInterpolation, time_window=0.1, sampling_rate=2000)
+(agg_rate_1, ot_1) = SNN.Plots.compute_grand_average(sol, first(readout), stim_schedule, :spikes; interpol_fn=AkimaInterpolation, time_window=0.1, sampling_rate=2000)
 
 # ╔═╡ 81eaed1e-b1f8-4129-92e1-d6b33bc4106e
 size(agg_rate[1])
@@ -411,6 +381,9 @@ CSI_v = csi(grouped_trials, ot, 0.0, 0.1, is_voltage=true)
 # ╔═╡ ed473424-9f60-480b-9669-46a37648043f
 csi([[0, 0, 0, 0], [0, 0, 0, 1]], [1, 2, 3, 4], 0, 5)
 
+# ╔═╡ 89a57b7f-2b58-407f-94ac-252cd1fe5bc8
+
+
 # ╔═╡ 80646a5b-ab83-4214-979a-152815b42f51
 sampled_values[1:3]
 
@@ -439,6 +412,63 @@ SNN.Plots.plot_heatmap(
 	title="csi over params search", name="results/base_3_adaptation_scan_a_b.png", tofile=false, xlabel="a", ylabel="b"
 )
 
+# ╔═╡ 77fed32e-6060-40e6-b39c-d12e23632f39
+SNN.Plots.get_trials_from_schedule(stim_schedule)
+
+# ╔═╡ a67c32a9-c3d9-4879-b51a-b58611d46f9f
+begin
+    e_r = SNN.Plots.fetch_tree_neuron_value("e_neuron", 3, "R", tree)
+    e_v = SNN.Plots.fetch_tree_neuron_value("e_neuron", 3, "v", tree)
+
+    spikes = sol[e_r] |> SNN.Utils.get_spikes_from_r .|> Bool |> sp -> SNN.Utils.get_spike_timings(sp, sol)
+    trials_ts = SNN.Plots.get_trials_from_schedule(stim_schedule)
+    trialss = trials_ts |> x -> SNN.Plots.trial_to_idxs(x, sol.t)
+	# @show size(trialss)
+	
+    trial_values = trialss |> Map(trial -> sol[e_v][trial]) |> collect
+    trial_starts = first.(trials_ts)
+    trial_times = trialss |> Map(trial -> sol.t[trial]) |> collect
+    trial_t_offsetted = [trial_times[i] .- Ref(trial_starts[i]) for i in axes(trial_starts, 1)]
+	# SNN.Plots.plot_agg_value(trial_t_offsetted, trial_values; title="trials of e $i", name=name_interpol("trials_$i.png"), tofile=false, schedule=stim_schedule)
+end
+
+# ╔═╡ 3ebad0b4-4fd8-40aa-ad9f-aaeadca1ce5d
+trial_values
+
+# ╔═╡ c76cc510-9d9a-47e1-9fc6-31cf2cd30933
+@show trial_starts
+
+# ╔═╡ 9308087c-0d3f-483b-ae48-ecda874286f4
+begin
+	function get_trial_groups(trial_starts, stim_schedule)
+	    # Extract relevant rows
+	    start_times = stim_schedule[1, :]
+	    group_values = stim_schedule[3, :]
+	    
+	    # Create a matrix where each row corresponds to a trial start
+	    # and each column to a start_time. True where they match.
+	    match_matrix = isapprox.(trial_starts, permutedims(start_times), atol=1e-12)
+	    
+	    # Use matrix multiplication to directly compute the result
+	    # Each row in match_matrix has exactly one true value (1.0), 
+	    # so this effectively selects the corresponding group value
+	    return vec(match_matrix * group_values)
+	end
+	get_trial_groups(trial_starts, stim_schedule)
+end
+
+# ╔═╡ 9dc0a87c-5b00-4949-b1aa-b1540168994e
+trials_ts
+
+# ╔═╡ cd999a8f-d0b2-4bcf-85a5-cd0bba90136d
+@show stim_schedule
+
+# ╔═╡ 5a410ced-a688-4936-aaa4-862ea05f18db
+SNN.Plots.get_trials_from_schedule(stim_schedule)
+
+# ╔═╡ 84788e3f-8dfc-4df0-b409-643d3b52d978
+
+
 # ╔═╡ Cell order:
 # ╠═e86eea66-ad59-11ef-2550-cf2588eae9d6
 # ╠═31c85e65-cf3e-465a-86da-9a8547f7bec0
@@ -453,7 +483,6 @@ SNN.Plots.plot_heatmap(
 # ╠═dba22b66-ba23-4b2d-83bb-d6f32e9a3e59
 # ╠═c39f4a5c-86ec-4e92-a20f-965cf37fc3cb
 # ╠═1b5b20d7-3934-406a-9d9e-2af0ad2c13db
-# ╠═1f069d6f-4ead-49c5-84da-957c15d69074
 # ╠═32e92fca-36d3-4ebd-a228-fd6b3f965694
 # ╠═e90677e4-3a63-4d1c-bc8f-0bb13f1a490c
 # ╠═786f52c6-f985-4b6f-b5db-04e24f5d48ce
@@ -471,11 +500,14 @@ SNN.Plots.plot_heatmap(
 # ╠═3ae6f318-21c3-44cf-bb92-2836883229b4
 # ╠═6a0f1c02-02c3-4f40-9537-5a82bb773b7b
 # ╠═fc6227bc-9036-41d9-8fe3-4f947a227fe0
+# ╠═16d3f08f-20a3-4ece-93c6-0b8aa732a79e
+# ╠═d29f9797-b2d5-4125-9a80-e2695f4a759a
 # ╠═63ebbfb4-ae1e-4d80-a08f-ee35a1fdbcfb
 # ╠═1a97fd70-8dc2-45ab-b480-70e7e3651205
 # ╠═d0fdb66a-c87b-40d5-8caa-04484b0cb5c6
 # ╠═af3cd829-d768-417a-aaea-cf0dde63ba54
 # ╠═baa3784f-70a5-46f7-a8db-d5e102026411
+# ╠═073eda4b-62bb-41ff-86d1-e4e17f1c32cc
 # ╠═bc881bde-e581-4459-8ee3-ce0cc7fefb6d
 # ╠═3a999581-169f-4bc9-a74a-8317fb2b7523
 # ╠═5f8072f2-aa4c-4150-97f7-6db1fe89bfdf
@@ -498,7 +530,7 @@ SNN.Plots.plot_heatmap(
 # ╠═5174d0e7-9d37-42a7-a13f-30d8f71a52ef
 # ╠═672a833a-5c91-4397-8ce2-fbcf343beb75
 # ╠═96951fbb-ba5a-4606-ac04-e3c9bd70c0d2
-# ╠═a0923e08-6ad3-45c9-9d0e-3a5d78338749
+# ╠═bb10b285-6dd6-411f-bfc0-7d27d086c428
 # ╠═46073470-7f50-4cd4-98a7-3eb5043e6bab
 # ╠═81eaed1e-b1f8-4129-92e1-d6b33bc4106e
 # ╠═4e1edae3-c304-43f1-8aa6-8fee655436e7
@@ -510,6 +542,7 @@ SNN.Plots.plot_heatmap(
 # ╠═a9aecee8-45bc-4f6e-b68c-5884c6d8a58c
 # ╠═b5cb6703-e19a-4e22-b9a8-dd8d037448eb
 # ╠═ed473424-9f60-480b-9669-46a37648043f
+# ╠═89a57b7f-2b58-407f-94ac-252cd1fe5bc8
 # ╠═80646a5b-ab83-4214-979a-152815b42f51
 # ╠═6f92bcf3-1f6f-46dd-91ff-871b448b27e3
 # ╠═eebd69b0-f702-40cb-ab3a-f2b1fd154c0d
@@ -517,3 +550,12 @@ SNN.Plots.plot_heatmap(
 # ╠═300947b8-d5a3-468e-a42e-3b5c77f3122c
 # ╠═7ca48fda-9ea0-4018-b8af-5225a4b73cda
 # ╠═3c6a202b-2b0a-43cc-99bc-2d05d50ea4b6
+# ╠═77fed32e-6060-40e6-b39c-d12e23632f39
+# ╠═a67c32a9-c3d9-4879-b51a-b58611d46f9f
+# ╠═3ebad0b4-4fd8-40aa-ad9f-aaeadca1ce5d
+# ╠═c76cc510-9d9a-47e1-9fc6-31cf2cd30933
+# ╠═9308087c-0d3f-483b-ae48-ecda874286f4
+# ╠═9dc0a87c-5b00-4949-b1aa-b1540168994e
+# ╠═cd999a8f-d0b2-4bcf-85a5-cd0bba90136d
+# ╠═5a410ced-a688-4936-aaa4-862ea05f18db
+# ╠═84788e3f-8dfc-4df0-b409-643d3b52d978
