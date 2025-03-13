@@ -257,11 +257,11 @@ function plot_adaptation_value(i, sol, start, stop, name_interpol, tree::ParamTr
     Plots.plot_neuron_value(sol.t, sol[e_w], nothing, nothing, offset; start=start, stop=stop, title="adaptation of e $i", name=name_interpol("adaptation_e_$i.png"), schedule=schedule, is_voltage=false, tofile=tofile)
 end
 
-function plot_heatmap(values; xlabel="", ylabel="", title="", tofile=true, name="")
+function plot_heatmap(values; xlabel="", ylabel="", title="", tofile=true, name="", colorrange=Makie.automatic)
     # values is shape (vector x, y and z)
     heatfig = Figure(size=(900, 700))
     ax_heat = heatfig[1, 1] = Axis(heatfig; title=title, xlabel=xlabel, ylabel=ylabel)
-    hm = heatmap!(ax_heat, values..., colormap=:thermal)
+    hm = heatmap!(ax_heat, values..., colormap=:bluesreds, colorrange=colorrange)
     Colorbar(heatfig[1, 2], hm)
     tofile ? save(name, heatfig) : heatfig
 end
