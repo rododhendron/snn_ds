@@ -57,16 +57,15 @@ end
 # ╔═╡ 3d936faa-73aa-47fc-be6a-92d0d42d8389
 begin
 	params = SNN.Neuron.get_adex_neuron_params_skeleton(Float64)#, sch_t, sch_onset, sch_group)
-	[println(labels(params)[i], " = ", params[i]) for i in 1:length(params)]
 end
 
 # ╔═╡ 905483e2-78b9-40ed-8421-cd1b406003d9
 begin
-	tspan = (0, 4)
+	tspan = (0, 50)
 	
 	# make schedule
 	# stim_params.n_trials = 20
-	stim_params.amplitude = 2.5e-9
+	stim_params.amplitude = 0.9e-9
 	stim_params.duration = 50.0e-3
 	stim_params.deviant_idx = 2
 	stim_params.standard_idx = 1
@@ -82,21 +81,27 @@ begin
 	sch_group = deepcopy(stim_schedule[3, :])
 	
 	# @time params = Neuron.AdExNeuronParams()
-	params.inc_gsyn = 40.0e-9
-	params.a = 0.0e-9          # Subthreshold adaptation (A)
-	params.b = 4.0e-10          # Spiking adaptation (A)
-	params.TauW = 600.0e-3      # Adaptation time constant (s)
-	params.Cm = 4.0e-10
+	params.inc_gsyn_ampa = 18.0e-9
+	params.a = 1.0e-9          # Subthreshold adaptation (A)
+	params.b = 120.0e-12          # Spiking adaptation (A)
+	params.TauW = 1000.0e-3      # Adaptation time constant (s)
+	params.Cm = 281e-12
 	
-	params.Ibase = 4e-10
+	params.Ibase = 2e-10
 	# params.Ibase = 0
-	params.sigma = 0.08
+	params.sigma = 0.1
 
 	rules = []
 	# push!(rules, SNN.Params.make_rule("e_neuron", 3, "soma__Ibase", 2e-10))
 	merged_params = SNN.Params.override_params(params, rules)
 	@show params.b * params.TauW
 end
+
+# ╔═╡ b9036b4b-f597-42d4-9104-7792211df0c8
+[println(labels(merged_params)[i], " = ", merged_params[i]) for i in 1:length(merged_params)]
+
+# ╔═╡ 19e24c39-8641-4d73-852a-bbbed640effd
+[println(labels(stim_params)[i], " = ", stim_params[i]) for i in 1:length(stim_params)]
 
 # ╔═╡ dba22b66-ba23-4b2d-83bb-d6f32e9a3e59
 begin
@@ -151,7 +156,7 @@ begin
 end
 
 # ╔═╡ e90677e4-3a63-4d1c-bc8f-0bb13f1a490c
-simplified_model.e_neuron_5₊soma₊group
+# simplified_model.e_neuron_5₊soma₊group
 
 # ╔═╡ 786f52c6-f985-4b6f-b5db-04e24f5d48ce
 begin
@@ -480,6 +485,8 @@ SNN.Plots.get_trials_from_schedule(stim_schedule)
 # ╠═33b33822-5476-4759-a100-1b274456aecc
 # ╠═3d936faa-73aa-47fc-be6a-92d0d42d8389
 # ╠═905483e2-78b9-40ed-8421-cd1b406003d9
+# ╠═b9036b4b-f597-42d4-9104-7792211df0c8
+# ╠═19e24c39-8641-4d73-852a-bbbed640effd
 # ╠═dba22b66-ba23-4b2d-83bb-d6f32e9a3e59
 # ╠═c39f4a5c-86ec-4e92-a20f-965cf37fc3cb
 # ╠═1b5b20d7-3934-406a-9d9e-2af0ad2c13db

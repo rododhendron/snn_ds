@@ -136,15 +136,12 @@ function generate_schedule(params::ComponentVector, tspan::Tuple{Int,Int}; is_ps
         prev_stims = zeros(eltype(stims), size(stims))
         filtered_stims = stims
         while check_stims(filtered_stims)
-            @show filtered_stims
             filtered_stims = filter_stims(filtered_stims)
-            @show filtered_stims
         end
     else
         filtered_stims = stims
     end
 
-    @show filtered_stims
 
     schedule = Array{Float64,2}(undef, 3, size(filtered_stims, 1))
 

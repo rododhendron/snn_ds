@@ -143,4 +143,22 @@ function get_matching_timings(stims::Vector, spikes::Vector, window::Float64)
     stims |> Map(x -> count(i -> x < i < x + window, spikes)) |> collect
 end
 
+function get_parameter_range(params_dict, param_symbol, num_points)
+    # Check if the parameter exists in the dictionary
+    if !haskey(params_dict, param_symbol)
+        error("Parameter $param_symbol not found in the dictionary")
+    end
+
+    # Get the range limits from the dictionary
+    range_limits = params_dict[param_symbol]
+
+    # Extract start and stop values
+    start_val = range_limits[1]
+    stop_val = range_limits[2]
+
+    # Create and return the range
+    return param_symbol, range(start_val, stop_val, length=num_points)
+end
+
+
 end

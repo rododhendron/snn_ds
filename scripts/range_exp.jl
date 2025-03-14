@@ -49,14 +49,35 @@ gpu = x -> x
 tspan = (0, 100)
 stim_params = SNN.Params.get_stim_params_skeleton()
 # stim_params.n_trials = 20
-stim_params.amplitude = 5.0e-9
+stim_params.amplitude = 0.9e-9
 stim_params.duration = 50.0e-3
 stim_params.deviant_idx = 2
 stim_params.standard_idx = 1
 stim_params.p_deviant = 0.2
 stim_params.start_offset = 2.5
-stim_params.isi = 350e-3
+stim_params.isi = 300e-3
 stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_random=true)
+
+params_sweep = Dict(
+    :a => [0.0, 20e-9],
+    :b => [0.0, 2000e-12],
+    :sigma => [0.0001, 1.0],
+    :Ibase => [0.0, 10.0e-10],
+)
+
+param_to_sweep = ARGS[1]
+println("sweeping $(param_to_sweep) ")
+
+@time glob_params = SNN.Neuron.get_adex_neuron_params_skeleton(Float64)
+glob_params.inc_gsyn_ampa = 18e-9
+glob_params.a = 1.0e-9          # Subthreshold adaptation (A)
+glob_params.b = 120e-12          # Spiking adaptation (A)
+glob_params.TauW = 1000.0e-3      # Adaptation time constant (s)
+glob_params.Cm = 281e-12
+
+glob_params.Ibase = 2.0e-10
+glob_params.sigma = 0.1
+
 
 @always_everywhere begin #let SNN = SNN
     using ParallelProcessingTools, Distributed
@@ -109,21 +130,12 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
     # param_to_change_b = :b
     # param_to_change_b = :sigma
 
-    param_to_change_a = :b
-    param_a_range = 0.0e-12:5e-12:200e-12
+    param_to_sweep = $param_to_sweep |> Symbol
+    (param_to_change_a, param_a_range) = SNN.Utils.get_parameter_range($params_sweep, param_to_sweep, 100)
 
     # make schedule
     UID = $UID_g
-
-    @time params = SNN.Neuron.get_adex_neuron_params_skeleton(Float64)
-    params.inc_gsyn = 8e-9
-    params.a = 1.5e-9          # Subthreshold adaptation (A)
-    params.b = 4.4e-12          # Spiking adaptation (A)
-    params.TauW = 144.0e-3      # Adaptation time constant (s)
-    params.Cm = 281e-12
-
-    params.Ibase = 1.0e-10
-    params.sigma = 0.04
+    params = $glob_params
 
     con_mapping_nested = [
         (SNN.Params.@connect_neurons [1, 2] SNN.Neuron.AMPA() 3),
