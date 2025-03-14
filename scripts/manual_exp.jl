@@ -30,7 +30,9 @@ sch_group = deepcopy(stim_schedule[3, :])
 
 # @time params = Neuron.AdExNeuronParams()
 @time params = SNN.Neuron.get_adex_neuron_params_skeleton(Float64)#, sch_t, sch_onset, sch_group)
-params.inc_gsyn = 6e-9
+params.inc_gsyn_ampa = 6e-9
+params.inc_gsyn_gabaa = 6e-9
+params.inc_gsyn_gabab = 6e-9
 params.a = 8.0e-9          # Subthreshold adaptation (A)
 params.b = 3e-10          # Spiking adaptation (A)
 params.TauW = 500.0e-3      # Adaptation time constant (s)
