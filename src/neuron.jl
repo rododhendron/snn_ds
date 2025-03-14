@@ -175,7 +175,7 @@ This is a first-order kinetic model for excitatory synapses.
     @parameters begin
         tau_ampa
         vtarget_exc
-        inc_gsyn
+        inc_gsyn_ampa
     end
     @variables begin
         g_syn(t) = 0, [input = true]
@@ -211,7 +211,7 @@ This is a first-order kinetic model for inhibitory synapses.
     @parameters begin
         tau_GABAa_fast
         vtarget_inh
-        inc_gsyn
+        inc_gsyn_gabaa
     end
     @variables begin
         g_syn(t) = 0, [input = true]
@@ -219,6 +219,21 @@ This is a first-order kinetic model for inhibitory synapses.
     # have to bind I on connect
     @equations begin
         D(g_syn) ~ -g_syn / tau_GABAa_fast
+    end
+end
+
+@mtkmodel SynapseGABAb begin # GABAb synapse https://neuronaldynamics.epfl.ch/online/Ch3.S1.html#Ch3.E2
+    @parameters begin
+        tau_GABAb_slow
+        vtarget_inh
+        inc_gsyn_gabab
+    end
+    @variables begin
+        g_syn(t) = 0, [input = true]
+    end
+    # have to bind I on connect
+    @equations begin
+        D(g_syn) ~ -g_syn / tau_GABAb_slow
     end
 end
 
@@ -237,10 +252,13 @@ function get_adex_neuron_params_skeleton(type::DataType)::ComponentVector#, sch_
         tau_ampa=10.0e-3,   # AMPA decrease time constant (s)
         tau_GABAa_rise=1e-3,# GABAa increase time constant (s)
         tau_GABAa_fast=6e-3,# GABAa decrease time constant (s)
+        tau_GABAb_slow=50e-3,# GABAa slow decrease time constant (s)
         vtarget_exc=0,      # Voltage value that drive excitation (V)
-        vtarget_inh=-75e-3, # Voltage value that drive inhibition (V)
+        vtarget_inh=-95e-3, # Voltage value that drive inhibition (V)
         vspike=0,           # Voltage value defining resetting voltage at resting value (V)
-        inc_gsyn=0.3e-9,    # Conductance value by which to increment when a synapse receive a spike (S)
+        inc_gsyn_ampa=0.3e-9,    # Conductance value by which to increment when a synapse receive a spike (S)
+        inc_gsyn_gabaa=0.3e-9,    # Conductance value by which to increment when a synapse receive a spike (S)
+        inc_gsyn_gabab=0.3e-9,    # Conductance value by which to increment when a synapse receive a spike (S)
         # e_neuron_1__soma__input_value=0.80e-9, # input value specific to excitatory neuron 1
         duration=400e-3,    # Duration of the stimulus onset (s)
         group=0,
@@ -268,13 +286,18 @@ abstract type SynapseType end
 struct SIMPLE_E <: SynapseType end
 struct AMPA <: SynapseType end
 struct GABAa <: SynapseType end
+struct GABAb <: SynapseType end
 
 function get_synapse_eq(_synapse_type::AMPA, post_neuron::AbstractODESystem)::Equation # _ before variable is a convention for a unused variable in function body ; just used for type dispatch
-    Equation(post_neuron.ampa_syn.g_syn, post_neuron.ampa_syn.g_syn + post_neuron.ampa_syn.inc_gsyn)
+    Equation(post_neuron.ampa_syn.g_syn, post_neuron.ampa_syn.g_syn + post_neuron.ampa_syn.inc_gsyn_ampa)
 end
 
 function get_synapse_eq(_synapse_type::GABAa, post_neuron::AbstractODESystem)::Equation # _ before variable is a convention for a unused variable in function body ; just used for type dispatch
-    Equation(post_neuron.gabaa_syn.g_syn, post_neuron.gabaa_syn.g_syn + post_neuron.gabaa_syn.inc_gsyn)
+    Equation(post_neuron.gabaa_syn.g_syn, post_neuron.gabaa_syn.g_syn + post_neuron.gabaa_syn.inc_gsyn_gabaa)
+end
+
+function get_synapse_eq(_synapse_type::GABAb, post_neuron::AbstractODESystem)::Equation # _ before variable is a convention for a unused variable in function body ; just used for type dispatch
+    Equation(post_neuron.gabab_syn.g_syn, post_neuron.gabab_syn.g_syn + post_neuron.gabab_syn.inc_gsyn_gabab)
 end
 
 function get_synapse_eq(_synapse_type::Nothing, post_neuron::AbstractODESystem)::Nothing # _ before variable is a convention for a unused variable in function body ; just used for type dispatch
@@ -338,14 +361,15 @@ function make_neuron(params::ComponentArray, soma_model::Model, tspan::Tuple{Int
     @named soma = soma_model(; name=Symbol("soma"), n_stims=size(schedule_p, 2), sch_t=deepcopy(schedule_p[1, :]), sch_group=deepcopy(schedule_p[3, :]), sch_onset=deepcopy(schedule_p[2, :]))
     @named ampa_syn = SynapseAMPA(; name=Symbol("ampa_syn"))
     @named gabaa_syn = SynapseGABAa(; name=Symbol("gabaa_syn"))
+    @named gabab_syn = SynapseGABAb(; name=Symbol("gabab_syn"))
 
     neuron = ModelingToolkit.compose(
         ODESystem(
             [
                 soma.Ie ~ ampa_syn.g_syn * -(soma.v - ampa_syn.vtarget_exc)
-                soma.Ii ~ gabaa_syn.g_syn * -(soma.v - gabaa_syn.vtarget_inh)
+                soma.Ii ~ gabaa_syn.g_syn * -(soma.v - gabaa_syn.vtarget_inh) + gabab_syn.g_syn * -(soma.v - gabab_syn.vtarget_inh)
             ], t; name=name
-        ), soma, ampa_syn, gabaa_syn
+        ), soma, ampa_syn, gabaa_syn, gabab_syn
     )
     neuron
 end
@@ -469,7 +493,7 @@ end
 
 function infer_connection_from_map(
     neurons::Vector{T} where {T<:AbstractODESystem},
-    mapping::Vector{Tuple{Int64, Int64, S}} where {S<:SynapseType}
+    mapping::Vector{Tuple{Int64,Int64,S}} where {S<:SynapseType}
 )::Tuple{Vector{Any},Array{Union{Nothing,Any}}}
     # take neurons, assign ids, map connections from dict map
     n_neurons = length(neurons)
@@ -498,7 +522,7 @@ function init_connection_map(e_neurons::Vector{T}, i_neurons::Vector{T}, connect
     (id_map, map_connect)
 end
 
-function make_network(neurons::Vector{T}, connections::Vector{Pair{Vector{Equation}, Vector{Equation}}})::T where {T<:AbstractODESystem}
+function make_network(neurons::Vector{T}, connections::Vector{Pair{Vector{Equation},Vector{Equation}}})::T where {T<:AbstractODESystem}
     ModelingToolkit.compose(ODESystem([], t; continuous_events=connections, name=:connected_neurons), neurons)
 end
 
