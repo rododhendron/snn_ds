@@ -49,13 +49,13 @@ gpu = x -> x
 tspan = (0, 100)
 stim_params = SNN.Params.get_stim_params_skeleton()
 # stim_params.n_trials = 20
-stim_params.amplitude = 1.6e-9
+stim_params.amplitude = 5.0e-9
 stim_params.duration = 50.0e-3
 stim_params.deviant_idx = 2
 stim_params.standard_idx = 1
-stim_params.p_deviant = 0.15
+stim_params.p_deviant = 0.2
 stim_params.start_offset = 2.5
-stim_params.isi = 300e-3
+stim_params.isi = 350e-3
 stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_random=true)
 
 @always_everywhere begin #let SNN = SNN
@@ -88,7 +88,8 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
 
     # e_neurons_n = 5
 
-    # a & b
+    # param_a_range = 0.00001:0.01:0.2
+    # param_to_change_a = :sigma
     #param_b_range = 1.0e-10:4.0e-10:6.0e-9
     param_b_range = 0.0e-12:0.5e-12:9.0e-11
 
@@ -97,18 +98,19 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
 
     # param_to_change_a = :a
     # param_to_change_b = :b
-    param_a_range = 0.00001:0.01:0.2
-    param_to_change_a = :sigma
 
     # param_a_range = 0.01:0.05:3.0
     # param_b_range = 0.1:0.1:3.0
     # param_to_change_a = :a
-    param_to_change_b = :b
+    # param_to_change_b = :b
     # param_b_range = 0.1:0.1:3.0
     # param_to_change_a = :a
     # param_b_range = 1.0e-12:0.1e-11:10.0e-11
     # param_to_change_b = :b
     # param_to_change_b = :sigma
+
+    param_to_change_a = :b
+    param_a_range = 0.0e-12:5e-12:200e-12
 
     # make schedule
     UID = $UID_g
@@ -117,11 +119,11 @@ stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_rando
     params.inc_gsyn = 8e-9
     params.a = 1.5e-9          # Subthreshold adaptation (A)
     params.b = 4.4e-12          # Spiking adaptation (A)
-    params.TauW = 600.0e-3      # Adaptation time constant (s)
-    params.Cm = 4.5e-10
+    params.TauW = 144.0e-3      # Adaptation time constant (s)
+    params.Cm = 281e-12
 
     params.Ibase = 1.0e-10
-    params.sigma = 1.0
+    params.sigma = 0.04
 
     con_mapping_nested = [
         (SNN.Params.@connect_neurons [1, 2] SNN.Neuron.AMPA() 3),

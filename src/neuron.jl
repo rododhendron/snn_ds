@@ -226,12 +226,12 @@ function get_adex_neuron_params_skeleton(type::DataType)::ComponentVector#, sch_
     ComponentArray{type}(
         vrest=-65.0e-3,     # Resting membrane potential (V)
         vthr=-50.0e-3,      # Spike threshold (V)
-        Je=30.0e-9,         # Membrane time constant (Siemens S)
+        Je=30.0e-9,         # Membrane conductance (Siemens S)
         delta=2.0e-3,       # Spike slope factor (V)
         Cm=281e-12,         # Membrane capacitance (Farad F)
         TauW=144.0e-3,      # Adaptation time constant (s)
         a=40.0e-9,          # Subthreshold adaptation (A)
-        gl=20e-9,           # leak conductance
+        gl=30e-9,           # leak conductance
         b=0.16e-9,          # Spiking adaptation (A)
         input_value=0,      # Ib = Basal input current (A)
         tau_ampa=10.0e-3,   # AMPA decrease time constant (s)

@@ -59,8 +59,8 @@ function make_fig(; xlabel="", ylabel="", title="", height=700, width=1600, ytic
 end
 
 function plot_xy(x, y; xlabel="", ylabel="", title="", name="", tofile=true)
-    f, ax = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title)
-    lines!(ax, x, y)
+    f, ax = make_fig(; xlabel=xlabel, ylabel=ylabel, title=title, call_ax2=false)
+    scatter!(ax, x, y)
     tofile ? save(name, f) : f
 end
 

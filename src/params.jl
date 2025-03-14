@@ -81,8 +81,6 @@ function standard_stim_rule(stims)
                                       Consecutive(n_consecutive; step=1) |>
                                       Map(stim_group -> all(stim -> stim == 1, stim_group)) |>
                                       collect
-    @show standards_idxs_consecutive_mask
-    @show standards_idxs
     return standards_idxs[1:length(standards_idxs)-n_consecutive][standards_idxs_consecutive_mask] .+ n_consecutive
 end
 
@@ -130,7 +128,7 @@ function generate_schedule(params::ComponentVector, tspan::Tuple{Int,Int}; is_ps
     if n_trials == 0
         return Array{Float64,2}(undef, 3, 0)
     end
-    
+
     stim_distribution = Categorical(prob_vector)
     stims = rand(stim_distribution, Int(n_trials))
 

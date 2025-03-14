@@ -141,7 +141,7 @@ function run_exp(path_prefix::String, name::String;
         # cb = ModelingToolkit.merge_cb(contin_cb, nothing) # 2nd arg is placeholder for discrete callback
         ou_process = [RealWienerProcess(0.0, 0.0) for _ in 1:length(n_neurons)]
 
-        @show noise_eqs
+        # @show noise_eqs
         # Create the SDE problem with specialized solver settings
         prob = SDEProblem{true,SciMLBase.FullSpecialize}(
             simplified_model,
