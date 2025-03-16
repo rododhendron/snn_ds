@@ -63,6 +63,17 @@ params_sweep = Dict(
     :b => [0.0, 2000e-12],
     :sigma => [0.0001, 1.0],
     :Ibase => [0.0, 10.0e-10],
+    :Cm => [100e-12, 1000e-12],
+    :TauW => [10e-3, 2000e-3],
+    :inc_gsyn_ampa => [1e-10, 1e-7]
+)
+
+stim_params_sweep = Dict(
+    :amplitude => [0.0e-9, 15.0e-9],
+    :duration => [0.1e-3, 1000.0e-3],
+    :p_deviant => [0.05, 0.5],
+    :start_offset => [0.1, 5.0],
+    :isi => [60e-3, 2000e-3]
 )
 
 param_to_sweep = ARGS[1]
@@ -71,7 +82,8 @@ println("sweeping $(param_to_sweep) ")
 @time glob_params = SNN.Neuron.get_adex_neuron_params_skeleton(Float64)
 glob_params.inc_gsyn_ampa = 18e-9
 glob_params.a = 1.0e-9          # Subthreshold adaptation (A)
-glob_params.b = 120e-12          # Spiking adaptation (A)
+b = 120e-12
+glob_params.b = b       # Spiking adaptation (A)
 glob_params.TauW = 1000.0e-3      # Adaptation time constant (s)
 glob_params.Cm = 281e-12
 
@@ -131,7 +143,8 @@ glob_params.sigma = 0.1
     # param_to_change_b = :sigma
 
     param_to_sweep = $param_to_sweep |> Symbol
-    (param_to_change_a, param_a_range) = SNN.Utils.get_parameter_range($params_sweep, param_to_sweep, 100)
+    # (param_to_change_a, param_a_range) = SNN.Utils.get_parameter_range($params_sweep, param_to_sweep, 2000)
+    (param_to_change_a, param_a_range) = SNN.Utils.get_parameter_range($stim_params_sweep, param_to_sweep, 1000)
 
     # make schedule
     UID = $UID_g
@@ -183,7 +196,12 @@ glob_params.sigma = 0.1
         (i, j) = indices
         new_pars = deepcopy(params)
         if isnothing(j)
-            new_pars[param_to_change_a] = param_i = param_a_range[i]
+            if param_to_change_a == "TauW"
+                new_pars.b = params.b * param_a_range[i] / params.TauW
+                @show new_pars.b * param_a_range[i]
+            end
+            # new_pars[param_to_change_a] = param_i = param_a_range[i]
+            stim_params[param_to_change_a] = param_i = param_a_range[i]
             name = "base_3_adaptation_" * string(param_to_change_a) * "=" * string(param_i)
         else
             new_pars[param_to_change_a] = param_i = param_a_range[i]
@@ -191,6 +209,7 @@ glob_params.sigma = 0.1
             name = "base_3_adaptation_" * string(param_to_change_a) * "=" * string(param_i) * "_" * string(param_to_change_b) * "=" * string(param_j)
         end
 
+        stim_schedule = SNN.Params.generate_schedule(stim_params, tspan; is_pseudo_random=true)
         out_path_prefix = "results/$(UID)/"
         csi_i = SNN.Pipeline.run_exp(
             out_path_prefix, name;
@@ -261,7 +280,7 @@ returns = @showprogress pmap(row -> run_model_for_ij!(row), pool, indices; retry
 # returns = @showprogress @onprocs(row -> run_model_for_ij!(row), indices; retry_delays=ones(4))
 @show returns
 
-@save "csis_results.jld2" returns
+@save "results/$(UID)/csis_results.jld2" returns
 
 
 for k in keys(returns[1])

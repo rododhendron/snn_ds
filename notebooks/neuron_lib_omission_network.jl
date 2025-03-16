@@ -63,17 +63,17 @@ end
 
 # ╔═╡ 905483e2-78b9-40ed-8421-cd1b406003d9
 begin
-	tspan = (0, 20)
+	tspan = (0, 10)
 	
 	# make schedule
 	# stim_params.n_trials = 20
-	stim_params.amplitude = 3.5e-9
+	stim_params.amplitude = 1.5e-9
 	stim_params.duration = 50.0e-3
 	stim_params.deviant_idx = 0
 	stim_params.standard_idx = 1
 	stim_params.select_size = 0
 	stim_params.p_deviant = 0.10
-	stim_params.start_offset = 0.5
+	stim_params.start_offset = 1.5
 	stim_params.isi = 300e-3
 	
 	stim_schedule = SNN.Params.generate_schedule(stim_params, tspan)
@@ -85,22 +85,31 @@ begin
 	# @time params = Neuron.AdExNeuronParams()
 	params.inc_gsyn_ampa = 5.0e-9
 	params.inc_gsyn_gabaa = 40.0e-9
-	params.inc_gsyn_gabab = 60.0e-9
-	params.a = 120.0e-9          # Subthreshold adaptation (A)
-	params.b = 28.0e-10          # Spiking adaptation (A)
+	params.inc_gsyn_gabab = 80.0e-9
+	params.a = 140.0e-9          # Subthreshold adaptation (A)
+	params.b = 6.0e-10          # Spiking adaptation (A)
 	params.TauW = 800.0e-3      # Adaptation time constant (s)
 	params.Cm = 4.0e-10
 	
 	params.Ibase = 0.8e-10
 	# params.Ibase = 0
-	params.sigma = 0.02
+	params.sigma = 0.05
 
-	gabab_neuron_i = [2, 3]
+	sensory_neuron_i = [1, 2, 3, 4]
+	gabab_neuron_i = [13, 14, 15]
+	mid_neurons_i = [5, 6, 7, 8]
+	ssa_neurons_i = [9, 10, 11, 12]
 	rules = []
-	for i in gabab_neuron_i
+	for i in sensory_neuron_i
 		push!(rules, SNN.Params.make_rule("e_neuron", i, "soma__b", 0e-10))
 		push!(rules, SNN.Params.make_rule("e_neuron", i, "soma__a", 0e-10))
 		push!(rules, SNN.Params.make_rule("e_neuron", i, "soma__group", 1))
+		push!(rules, SNN.Params.make_rule("e_neuron", i, "soma__input_value", stim_params.amplitude))
+	end
+	for i in gabab_neuron_i
+		push!(rules, SNN.Params.make_rule("e_neuron", i, "soma__b", 0e-10))
+		push!(rules, SNN.Params.make_rule("e_neuron", i, "soma__a", 0e-10))
+		push!(rules, SNN.Params.make_rule("e_neuron", i, "soma__group", 0))
 		push!(rules, SNN.Params.make_rule("e_neuron", i, "soma__input_value", stim_params.amplitude))
 	end
 	merged_params = SNN.Params.override_params(params, rules)
@@ -118,9 +127,14 @@ begin
 		# (SNN.Params.@connect_neurons [1, 2] SNN.Neuron.AMPA() 3)...
 		# (SNN.Params.@connect_neurons [4, 2] SNN.Neuron.AMPA() 3)...
 		# (1, 2, SNN.Neuron.GABAa()),
-		(2, 4, SNN.Neuron.GABAb()),
-		(3, 4, SNN.Neuron.GABAb()),
-	    (1, 4, SNN.Neuron.AMPA())
+		(SNN.Params.@connect_neurons sensory_neuron_i SNN.Neuron.AMPA() [mid_neurons_i; sensory_neuron_i; gabab_neuron_i])...;
+		(SNN.Params.@connect_neurons gabab_neuron_i SNN.Neuron.GABAb() [sensory_neuron_i; mid_neurons_i; ssa_neurons_i])...;
+		(SNN.Params.@connect_neurons gabab_neuron_i SNN.Neuron.AMPA() gabab_neuron_i)...;
+		(SNN.Params.@connect_neurons mid_neurons_i SNN.Neuron.AMPA() [gabab_neuron_i; mid_neurons_i; ssa_neurons_i])...;
+		(SNN.Params.@connect_neurons ssa_neurons_i SNN.Neuron.AMPA() ssa_neurons_i)...;
+		# (2, 4, SNN.Neuron.GABAb()),
+		# (3, 4, SNN.Neuron.GABAb()),
+	    # (1, 4, SNN.Neuron.AMPA())
 	]
 	@show con_mapping
 	#
@@ -238,7 +252,7 @@ stim_schedule
 
 
 # ╔═╡ af3cd829-d768-417a-aaea-cf0dde63ba54
-readout = SNN.Utils.fetch_tree(["e_neuron_4", "R"], tree)
+readout = SNN.Utils.fetch_tree(["e_neuron_11", "R"], tree)
 
 # ╔═╡ baa3784f-70a5-46f7-a8db-d5e102026411
 begin
@@ -266,7 +280,7 @@ sol[0.0, readout]
 sol.t
 
 # ╔═╡ 5f8072f2-aa4c-4150-97f7-6db1fe89bfdf
-readout_v = SNN.Utils.fetch_tree(["e_neuron_4", "v"], tree, false) |> first
+readout_v = SNN.Utils.fetch_tree(["e_neuron_11", "v"], tree, false) |> first
 
 # ╔═╡ 6f1e73ba-cde0-4915-828b-299017f274cd
 SNN.Plots.fetch_tree_neuron_value("e_neuron", 3, "v", tree)
