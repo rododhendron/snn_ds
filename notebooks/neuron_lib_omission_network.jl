@@ -64,6 +64,7 @@ end
 # ╔═╡ 905483e2-78b9-40ed-8421-cd1b406003d9
 begin
 	tspan = (0, 10)
+	Random.seed!(1234)
 	
 	# make schedule
 	# stim_params.n_trials = 20

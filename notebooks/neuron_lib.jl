@@ -61,18 +61,18 @@ end
 
 # ╔═╡ 905483e2-78b9-40ed-8421-cd1b406003d9
 begin
-	tspan = (0, 50)
+	tspan = (0, 100)
 	
 	# make schedule
 	# stim_params.n_trials = 20
-	stim_params.amplitude = 0.9e-9
-	stim_params.duration = 50.0e-3
+	stim_params.amplitude = 1.9e-9
+	stim_params.duration = 400.0e-3
 	stim_params.deviant_idx = 2
 	stim_params.standard_idx = 1
 	stim_params.select_size = 0
 	stim_params.p_deviant = 0.10
-	stim_params.start_offset = 0.5
-	stim_params.isi = 300e-3
+	stim_params.start_offset = 1.5
+	stim_params.isi = 5000e-3
 	
 	stim_schedule = SNN.Params.generate_schedule(stim_params, tspan)
 	
@@ -81,15 +81,15 @@ begin
 	sch_group = deepcopy(stim_schedule[3, :])
 	
 	# @time params = Neuron.AdExNeuronParams()
-	params.inc_gsyn_ampa = 18.0e-9
-	params.a = 1.0e-9          # Subthreshold adaptation (A)
+	params.inc_gsyn_ampa = 10.0e-9
+	params.a = 4.0e-9          # Subthreshold adaptation (A)
 	params.b = 120.0e-12          # Spiking adaptation (A)
-	params.TauW = 1000.0e-3      # Adaptation time constant (s)
+	params.TauW = 1300.0e-3      # Adaptation time constant (s)
 	params.Cm = 281e-12
 	
-	params.Ibase = 2e-10
+	params.Ibase = 1e-10
 	# params.Ibase = 0
-	params.sigma = 0.1
+	params.sigma = 0.04
 
 	rules = []
 	# push!(rules, SNN.Params.make_rule("e_neuron", 3, "soma__Ibase", 2e-10))

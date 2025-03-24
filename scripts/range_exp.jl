@@ -46,10 +46,10 @@ UID_g = randstring(6)
 # gpu = SNN.Device.to_device_fn(; backend="amd")
 gpu = x -> x
 # gpu = ROCArray
-tspan = (0, 100)
+tspan = (0, 200)
 stim_params = SNN.Params.get_stim_params_skeleton()
 # stim_params.n_trials = 20
-stim_params.amplitude = 0.9e-9
+stim_params.amplitude = 1.9e-9
 stim_params.duration = 50.0e-3
 stim_params.deviant_idx = 2
 stim_params.standard_idx = 1
@@ -76,19 +76,23 @@ stim_params_sweep = Dict(
     :isi => [60e-3, 2000e-3]
 )
 
+seed_param = Dict(
+    :seed => [0000, 9999]
+)
+
 param_to_sweep = ARGS[1]
 println("sweeping $(param_to_sweep) ")
 
 @time glob_params = SNN.Neuron.get_adex_neuron_params_skeleton(Float64)
-glob_params.inc_gsyn_ampa = 18e-9
-glob_params.a = 1.0e-9          # Subthreshold adaptation (A)
+glob_params.inc_gsyn_ampa = 10e-9
+glob_params.a = 4.0e-9          # Subthreshold adaptation (A)
 b = 120e-12
 glob_params.b = b       # Spiking adaptation (A)
-glob_params.TauW = 1000.0e-3      # Adaptation time constant (s)
+glob_params.TauW = 1300.0e-3      # Adaptation time constant (s)
 glob_params.Cm = 281e-12
 
-glob_params.Ibase = 2.0e-10
-glob_params.sigma = 0.1
+glob_params.Ibase = 1.0e-10
+glob_params.sigma = 0.04
 
 
 @always_everywhere begin #let SNN = SNN
@@ -146,6 +150,9 @@ glob_params.sigma = 0.1
     # (param_to_change_a, param_a_range) = SNN.Utils.get_parameter_range($params_sweep, param_to_sweep, 2000)
     (param_to_change_a, param_a_range) = SNN.Utils.get_parameter_range($stim_params_sweep, param_to_sweep, 1000)
 
+    # vary seed
+    # (param_to_change_a, param_a_range) = SNN.Utils.get_parameter_range($seed_param, param_to_sweep, 1000)
+
     # make schedule
     UID = $UID_g
     params = $glob_params
@@ -202,6 +209,7 @@ glob_params.sigma = 0.1
             end
             # new_pars[param_to_change_a] = param_i = param_a_range[i]
             stim_params[param_to_change_a] = param_i = param_a_range[i]
+            # seed_value = param_i = param_a_range[i]
             name = "base_3_adaptation_" * string(param_to_change_a) * "=" * string(param_i)
         else
             new_pars[param_to_change_a] = param_i = param_a_range[i]
@@ -222,7 +230,8 @@ glob_params.sigma = 0.1
             solver=solver,
             tols=tols,
             fetch_csi=true,
-            nout=true
+            nout=true,
+            # seed=floor(Int, seed_value)
             # to_device=gpu,
             # remake_prob=new_prob,
             # model=simplified_model,

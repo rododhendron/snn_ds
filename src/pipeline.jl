@@ -68,8 +68,11 @@ function run_exp(path_prefix::String, name::String;
     to_device::Function=x -> x,
     l::Union{Nothing,Base.AbstractLock}=nothing,
     neurons::Tuple{Union{Nothing,Vector{ODESystem}},Union{Nothing,Vector{ODESystem}}}=(nothing, nothing),
-    nout::Bool=false
+    nout::Bool=false,
+    seed::Int=1234
 )# where {T<:Neuron.SynapseType}
+
+    Random.seed!(seed)
     path = path_prefix * name * "/"
     mkpath(path)
     exp_name = path * name
