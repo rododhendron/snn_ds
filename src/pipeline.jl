@@ -346,7 +346,7 @@ function run_exp(path_prefix::String, name::String;
 
         # Option 2: Write what we have and rethrow
         Utils.write_params(results; name=name_interpol("result_metrics_error.yaml"))
-        if !isa(e, Union{MethodError, BoundsError})
+        if !isa(e, Union{MethodError,BoundsError})
             rethrow()
         end
     end
@@ -358,5 +358,34 @@ function run_exp(path_prefix::String, name::String;
     end
 end
 
+@setup_workload begin
+    @compile_workload begin
+        tspan = (0, 5)
+        stim_params = Params.get_stim_params_skeleton()
+        stim_schedule = Params.generate_schedule(stim_params, tspan; is_pseudo_random=true)
+        params = Neuron.get_adex_neuron_params_skeleton(Float64)
+        con_mapping_nested = [
+            (Params.@connect_neurons [1, 2] Neuron.AMPA() 3),
+        ]
+        con_mapping::Array{Tuple{Int64,Int64,Neuron.SynapseType},1} = reduce(vcat, con_mapping_nested)
+
+        pre_neurons = [row[1] for row in con_mapping]
+        post_neurons = [row[2] for row in con_mapping]
+        e_neurons_n = size(unique([pre_neurons; post_neurons]), 1)
+        tols = (2e-3, 2e-3)
+        (sol, simplified_model, prob, csi, neurons) = Pipeline.run_exp(
+            "tmp/", "tmp";
+            e_neurons_n=e_neurons_n,
+            params=params,
+            stim_params=stim_params,
+            stim_schedule=stim_schedule,
+            tspan=tspan,
+            con_mapping=con_mapping,
+            solver=DRI1(),
+            tols=tols,
+            fetch_csi=true,
+        )
+    end
+end
 
 end
